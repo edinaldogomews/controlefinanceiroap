@@ -109,20 +109,20 @@ def conectar_gsheets():
     except APIError as e:
         st.error("⚠️ Erro de permissão na API do Google!")
         st.warning(
-            f"""
+            """
             **Como resolver:**
 
             1. Copie o e-mail da conta de serviço (campo `client_email` nas credenciais)
             2. Vá até a planilha no Google Sheets
             3. Clique em **Compartilhar** e adicione o e-mail como **Editor**
-
-            Erro técnico: {str(e)}
             """
         )
+        # Log interno sem expor ao usuário (opcional: usar logging)
         return None
 
     except Exception as e:
-        st.error(f"⚠️ Erro ao conectar com Google Sheets: {str(e)}")
+        st.error("⚠️ Erro ao conectar com Google Sheets. Verifique suas credenciais e conexão.")
+        # Log interno sem expor ao usuário
         return None
 
 
