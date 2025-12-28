@@ -87,8 +87,9 @@ def conectar_gsheets():
         cliente = gspread.authorize(credenciais)
 
         # Abrir a planilha e retornar a primeira aba
+        # Usa get_worksheet(0) para pegar a primeira aba, independente do nome ("Sheet1" ou "Página1")
         planilha = cliente.open(NOME_PLANILHA)
-        worksheet = planilha.sheet1
+        worksheet = planilha.get_worksheet(0)
 
         return worksheet
 
@@ -156,6 +157,9 @@ def carregar_dados():
 
         # Selecionar apenas as colunas necessárias
         df = df[[col for col in COLUNAS_NECESSARIAS if col in df.columns]]
+
+        # Remover linhas completamente vazias
+        df = df.dropna(how='all')
 
         # Limpeza da coluna Valor
         def limpar_valor(valor):
