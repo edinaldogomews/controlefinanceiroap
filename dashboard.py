@@ -132,74 +132,69 @@ def carregar_dados():
     Carrega e limpa os dados do Google Sheets.
     Retorna um DataFrame limpo ou None em caso de erro.
     """
-    try:
-        # Conectar ao Google Sheets
-        worksheet = conectar_gsheets()
+    # Conectar ao Google Sheets
+    worksheet = conectar_gsheets()
 
-        if worksheet is None:
-            return None
-
-        # Obter todos os registros como lista de dicionários
-        registros = worksheet.get_all_records()
-
-        if not registros:
-            # Retorna DataFrame vazio com as colunas necessárias
-            return pd.DataFrame(columns=COLUNAS_NECESSARIAS)
-
-        # Converter para DataFrame
-        df = pd.DataFrame(registros)
-
-        # Verificar se as colunas necessárias existem
-        colunas_existentes = [col for col in COLUNAS_NECESSARIAS if col in df.columns]
-        if not colunas_existentes:
-            st.error("⚠️ A planilha não contém as colunas esperadas!")
-            return None
-
-        # Selecionar apenas as colunas necessárias
-        df = df[[col for col in COLUNAS_NECESSARIAS if col in df.columns]]
-
-        # Remover linhas completamente vazias
-        df = df.dropna(how='all')
-
-        # Limpeza da coluna Valor
-        def limpar_valor(valor):
-            if pd.isna(valor) or valor == '':
-                return 0.0
-            if isinstance(valor, (int, float)):
-                return float(valor)
-            # Se for string, limpar formatação brasileira
-            valor_str = str(valor)
-            valor_str = valor_str.replace('R$', '').strip()
-            valor_str = valor_str.replace('.', '')  # Remove ponto de milhar
-            valor_str = valor_str.replace(',', '.')  # Troca vírgula por ponto
-            try:
-                return float(valor_str)
-            except ValueError:
-                return 0.0
-
-        df['Valor'] = df['Valor'].apply(limpar_valor)
-        df['Valor'] = df['Valor'].fillna(0.0)
-
-        # Conversão da coluna Vencimento para datetime
-        df['Vencimento'] = pd.to_datetime(df['Vencimento'], errors='coerce', dayfirst=True)
-
-        # Remover linhas onde Descrição está vazia
-        df = df.dropna(subset=['Descrição'])
-        df = df[df['Descrição'].astype(str).str.strip() != '']
-
-        # Preencher valores NaN em Status e Categoria
-        df['Status'] = df['Status'].fillna('NÃO DEFINIDO')
-        df['Categoria'] = df['Categoria'].fillna('SEM CATEGORIA')
-
-        # Substituir strings vazias
-        df['Status'] = df['Status'].replace('', 'NÃO DEFINIDO')
-        df['Categoria'] = df['Categoria'].replace('', 'SEM CATEGORIA')
-
-        return df
-
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {str(e)}")
+    if worksheet is None:
         return None
+
+    # Obter todos os registros como lista de dicionários
+    registros = worksheet.get_all_records()
+
+    if not registros:
+        # Retorna DataFrame vazio com as colunas necessárias
+        return pd.DataFrame(columns=COLUNAS_NECESSARIAS)
+
+    # Converter para DataFrame
+    df = pd.DataFrame(registros)
+
+    # Verificar se as colunas necessárias existem
+    colunas_existentes = [col for col in COLUNAS_NECESSARIAS if col in df.columns]
+    if not colunas_existentes:
+        st.error("⚠️ A planilha não contém as colunas esperadas!")
+        return None
+
+    # Selecionar apenas as colunas necessárias
+    df = df[[col for col in COLUNAS_NECESSARIAS if col in df.columns]]
+
+    # Remover linhas completamente vazias
+    df = df.dropna(how='all')
+
+    # Limpeza da coluna Valor
+    def limpar_valor(valor):
+        if pd.isna(valor) or valor == '':
+            return 0.0
+        if isinstance(valor, (int, float)):
+            return float(valor)
+        # Se for string, limpar formatação brasileira
+        valor_str = str(valor)
+        valor_str = valor_str.replace('R$', '').strip()
+        valor_str = valor_str.replace('.', '')  # Remove ponto de milhar
+        valor_str = valor_str.replace(',', '.')  # Troca vírgula por ponto
+        try:
+            return float(valor_str)
+        except ValueError:
+            return 0.0
+
+    df['Valor'] = df['Valor'].apply(limpar_valor)
+    df['Valor'] = df['Valor'].fillna(0.0)
+
+    # Conversão da coluna Vencimento para datetime
+    df['Vencimento'] = pd.to_datetime(df['Vencimento'], errors='coerce', dayfirst=True)
+
+    # Remover linhas onde Descrição está vazia
+    df = df.dropna(subset=['Descrição'])
+    df = df[df['Descrição'].astype(str).str.strip() != '']
+
+    # Preencher valores NaN em Status e Categoria
+    df['Status'] = df['Status'].fillna('NÃO DEFINIDO')
+    df['Categoria'] = df['Categoria'].fillna('SEM CATEGORIA')
+
+    # Substituir strings vazias
+    df['Status'] = df['Status'].replace('', 'NÃO DEFINIDO')
+    df['Categoria'] = df['Categoria'].replace('', 'SEM CATEGORIA')
+
+    return df
 
 
 def salvar_nova_transacao(data_venc, descricao, valor, categoria, status):
