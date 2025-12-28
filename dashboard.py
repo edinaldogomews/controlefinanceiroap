@@ -1,6 +1,7 @@
 """
 Dashboard Financeiro Pessoal
 Desenvolvido com Streamlit, Pandas e Plotly
+Integração com Google Sheets via gspread
 """
 
 import streamlit as st
@@ -9,6 +10,10 @@ import plotly.express as px
 from pathlib import Path
 from datetime import date
 
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from gspread.exceptions import SpreadsheetNotFound, APIError
+
 # Configuração da página
 st.set_page_config(
     page_title="Dashboard Financeiro Pessoal",
@@ -16,30 +21,145 @@ st.set_page_config(
     layout="wide"
 )
 
-# Caminho do arquivo CSV
-CAMINHO_CSV = Path(__file__).parent / "Controle de Despesas.xlsx - Fixos.csv"
+# Configurações do Google Sheets
+CAMINHO_CREDENCIAIS = Path(__file__).parent / "credentials.json"
+NOME_PLANILHA = "Controle Financeiro - DB"
 
 # Colunas que utilizamos no dashboard
 COLUNAS_NECESSARIAS = ['Vencimento', 'Descrição', 'Valor', 'Categoria', 'Status']
 
 
-@st.cache_data
+def conectar_gsheets():
+    """
+    Conecta ao Google Sheets usando credenciais de conta de serviço.
+
+    Estratégia de autenticação:
+    1. Tenta usar st.secrets["gcp_service_account"] (Streamlit Cloud)
+    2. Fallback para arquivo credentials.json local (desenvolvimento)
+
+    Retorna o objeto worksheet (primeira aba) ou None em caso de erro.
+    """
+    try:
+        # Definir escopos de acesso
+        scopes = [
+            'https://spreadsheets.google.com/feeds',
+            'https://www.googleapis.com/auth/drive'
+        ]
+
+        credenciais = None
+
+        # Tentar autenticar via st.secrets (Streamlit Cloud)
+        try:
+            # st.secrets retorna um dicionário, usar from_json_keyfile_dict
+            credenciais_dict = st.secrets["gcp_service_account"]
+            credenciais = ServiceAccountCredentials.from_json_keyfile_dict(
+                dict(credenciais_dict),
+                scopes
+            )
+        except (KeyError, FileNotFoundError):
+            # Fallback: usar arquivo credentials.json local (desenvolvimento)
+            if CAMINHO_CREDENCIAIS.exists():
+                credenciais = ServiceAccountCredentials.from_json_keyfile_name(
+                    str(CAMINHO_CREDENCIAIS),
+                    scopes
+                )
+            else:
+                st.error("⚠️ Credenciais não encontradas!")
+                st.warning(
+                    """
+                    **Como resolver:**
+
+                    **Para Streamlit Cloud:**
+                    1. Acesse o painel do seu app no Streamlit Cloud
+                    2. Vá em **Settings** → **Secrets**
+                    3. Adicione suas credenciais sob o cabeçalho `[gcp_service_account]`
+
+                    **Para desenvolvimento local:**
+                    1. Acesse o [Google Cloud Console](https://console.cloud.google.com/)
+                    2. Crie um projeto e ative a API do Google Sheets
+                    3. Crie uma Conta de Serviço e baixe o arquivo JSON
+                    4. Renomeie para `credentials.json` e coloque na pasta do projeto
+                    """
+                )
+                return None
+
+        # Autorizar cliente gspread
+        cliente = gspread.authorize(credenciais)
+
+        # Abrir a planilha e retornar a primeira aba
+        planilha = cliente.open(NOME_PLANILHA)
+        worksheet = planilha.sheet1
+
+        return worksheet
+
+    except SpreadsheetNotFound:
+        st.error(f"⚠️ Planilha '{NOME_PLANILHA}' não encontrada!")
+        st.warning(
+            """
+            **Como resolver:**
+
+            1. Verifique se o nome da planilha está correto: **"Controle Financeiro - DB"**
+            2. Copie o e-mail da conta de serviço (campo `client_email` nas credenciais)
+            3. Compartilhe a planilha do Google com esse e-mail como **Editor**
+            """
+        )
+        return None
+
+    except APIError as e:
+        st.error("⚠️ Erro de permissão na API do Google!")
+        st.warning(
+            f"""
+            **Como resolver:**
+
+            1. Copie o e-mail da conta de serviço (campo `client_email` nas credenciais)
+            2. Vá até a planilha no Google Sheets
+            3. Clique em **Compartilhar** e adicione o e-mail como **Editor**
+
+            Erro técnico: {str(e)}
+            """
+        )
+        return None
+
+    except Exception as e:
+        st.error(f"⚠️ Erro ao conectar com Google Sheets: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=60)
 def carregar_dados():
     """
-    Carrega e limpa os dados do arquivo CSV.
+    Carrega e limpa os dados do Google Sheets.
     Retorna um DataFrame limpo ou None em caso de erro.
     """
     try:
-        # Carregar apenas as colunas necessárias
-        df = pd.read_csv(
-            CAMINHO_CSV,
-            usecols=COLUNAS_NECESSARIAS,
-            encoding='utf-8'
-        )
+        # Conectar ao Google Sheets
+        worksheet = conectar_gsheets()
+
+        if worksheet is None:
+            return None
+
+        # Obter todos os registros como lista de dicionários
+        registros = worksheet.get_all_records()
+
+        if not registros:
+            # Retorna DataFrame vazio com as colunas necessárias
+            return pd.DataFrame(columns=COLUNAS_NECESSARIAS)
+
+        # Converter para DataFrame
+        df = pd.DataFrame(registros)
+
+        # Verificar se as colunas necessárias existem
+        colunas_existentes = [col for col in COLUNAS_NECESSARIAS if col in df.columns]
+        if not colunas_existentes:
+            st.error("⚠️ A planilha não contém as colunas esperadas!")
+            return None
+
+        # Selecionar apenas as colunas necessárias
+        df = df[[col for col in COLUNAS_NECESSARIAS if col in df.columns]]
 
         # Limpeza da coluna Valor
         def limpar_valor(valor):
-            if pd.isna(valor):
+            if pd.isna(valor) or valor == '':
                 return 0.0
             if isinstance(valor, (int, float)):
                 return float(valor)
@@ -67,64 +187,44 @@ def carregar_dados():
         df['Status'] = df['Status'].fillna('NÃO DEFINIDO')
         df['Categoria'] = df['Categoria'].fillna('SEM CATEGORIA')
 
+        # Substituir strings vazias
+        df['Status'] = df['Status'].replace('', 'NÃO DEFINIDO')
+        df['Categoria'] = df['Categoria'].replace('', 'SEM CATEGORIA')
+
         return df
 
-    except FileNotFoundError:
-        return None
     except Exception as e:
         st.error(f"Erro ao carregar dados: {str(e)}")
         return None
 
 
-def carregar_dados_brutos():
-    """
-    Carrega os dados brutos do CSV para salvar novas transações.
-    Retorna o DataFrame completo ou None em caso de erro.
-    """
-    try:
-        df = pd.read_csv(CAMINHO_CSV, encoding='utf-8')
-        return df
-    except Exception:
-        return None
-
-
 def salvar_nova_transacao(data_venc, descricao, valor, categoria, status):
     """
-    Adiciona uma nova transação ao arquivo CSV.
+    Adiciona uma nova transação ao Google Sheets.
     """
     try:
-        # Carregar dados brutos (com todas as colunas originais)
-        df_bruto = carregar_dados_brutos()
+        # Conectar ao Google Sheets
+        worksheet = conectar_gsheets()
 
-        if df_bruto is None:
-            return False, "Erro ao carregar arquivo CSV."
+        if worksheet is None:
+            return False, "Erro ao conectar com Google Sheets."
 
-        # Formatar a data no padrão dd/mm/yyyy
-        data_formatada = data_venc.strftime('%d/%m/%Y')
+        # Formatar a data no padrão YYYY-MM-DD para o Google Sheets
+        data_formatada = data_venc.strftime('%Y-%m-%d')
 
         # Formatar o valor no padrão brasileiro (R$ X.XXX,XX)
         valor_formatado = f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-        # Criar nova linha com as colunas do CSV original
-        # Preencher colunas extras com valores vazios
-        nova_linha = {col: '' for col in df_bruto.columns}
-        nova_linha['Vencimento'] = data_formatada
-        nova_linha['Descrição'] = descricao
-        nova_linha['Valor'] = valor_formatado
-        nova_linha['Categoria'] = categoria
-        nova_linha['Status'] = status
+        # Criar a nova linha com os dados
+        nova_linha = [data_formatada, descricao, valor_formatado, categoria, status]
 
-        # Criar DataFrame com a nova linha
-        df_nova_linha = pd.DataFrame([nova_linha])
-
-        # Concatenar com o DataFrame original
-        df_atualizado = pd.concat([df_bruto, df_nova_linha], ignore_index=True)
-
-        # Salvar de volta no CSV
-        df_atualizado.to_csv(CAMINHO_CSV, index=False, encoding='utf-8')
+        # Adicionar a linha na planilha
+        worksheet.append_row(nova_linha)
 
         return True, "Transação salva com sucesso!"
 
+    except APIError as e:
+        return False, f"Erro de API do Google: {str(e)}"
     except Exception as e:
         return False, f"Erro ao salvar: {str(e)}"
 
@@ -137,50 +237,47 @@ def main():
     # Carregar dados
     df = carregar_dados()
 
-    # Verificar se o arquivo foi encontrado
+    # Verificar se os dados foram carregados
     if df is None:
-        st.error("⚠️ Arquivo CSV não encontrado!")
-        st.warning(
-            f"""
-            **Como resolver:**
-
-            1. Verifique se o arquivo `Controle de Despesas.xlsx - Fixos.csv` existe na pasta do projeto.
-
-            2. Se você tem apenas o arquivo Excel (.xlsx), exporte a aba "Fixos" como CSV:
-               - Abra o arquivo `Controle de Despesas.xlsx` no Excel
-               - Vá até a aba "Fixos"
-               - Clique em **Arquivo > Salvar Como**
-               - Escolha o formato **CSV UTF-8 (Delimitado por vírgulas)**
-               - Salve como `Controle de Despesas.xlsx - Fixos.csv`
-
-            3. Certifique-se de que o arquivo está no mesmo diretório do dashboard:
-               `{CAMINHO_CSV.parent}`
-            """
-        )
         st.stop()
+
+    # Verificar se o DataFrame está vazio
+    if df.empty:
+        st.warning("📭 Nenhum registro encontrado na planilha.")
+        st.info("Use o formulário na sidebar para adicionar sua primeira despesa!")
+
+        # Definir categorias padrão para o formulário
+        categorias_unicas = ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Outros']
+        status_unicos = ['EM ABERTO', 'PAGO']
+    else:
+        # Obter listas únicas para filtros
+        status_unicos = df['Status'].unique().tolist()
+        categorias_unicas = df['Categoria'].unique().tolist()
 
     # ========== SIDEBAR - FILTROS ==========
     st.sidebar.header("🔍 Filtros")
 
-    # Filtro de Status
-    status_unicos = df['Status'].unique().tolist()
-    status_selecionados = st.sidebar.multiselect(
-        "Status",
-        options=status_unicos,
-        default=status_unicos
-    )
+    if not df.empty:
+        # Filtro de Status
+        status_selecionados = st.sidebar.multiselect(
+            "Status",
+            options=status_unicos,
+            default=status_unicos
+        )
 
-    # Filtro de Categoria
-    categorias_unicas = df['Categoria'].unique().tolist()
-    categorias_selecionadas = st.sidebar.multiselect(
-        "Categoria",
-        options=categorias_unicas,
-        default=categorias_unicas
-    )
+        # Filtro de Categoria
+        categorias_selecionadas = st.sidebar.multiselect(
+            "Categoria",
+            options=categorias_unicas,
+            default=categorias_unicas
+        )
+    else:
+        status_selecionados = []
+        categorias_selecionadas = []
 
     # ========== SIDEBAR - ADICIONAR NOVA DESPESA ==========
     st.sidebar.markdown("---")
-    with st.sidebar.expander("➕ Adicionar Nova Despesa", expanded=False):
+    with st.sidebar.expander("➕ Adicionar Nova Despesa", expanded=df.empty):
         # Campo de Data
         nova_data = st.date_input(
             "📅 Data de Vencimento",
@@ -204,7 +301,7 @@ def main():
         )
 
         # Campo de Categoria (puxando categorias existentes)
-        categorias_opcoes = sorted(categorias_unicas)
+        categorias_opcoes = sorted(set(categorias_unicas))
         nova_categoria = st.selectbox(
             "🏷️ Categoria",
             options=categorias_opcoes
@@ -225,13 +322,14 @@ def main():
                 st.error("⚠️ O valor deve ser maior que zero!")
             else:
                 # Salvar a transação
-                sucesso, mensagem = salvar_nova_transacao(
-                    nova_data,
-                    nova_descricao.strip(),
-                    novo_valor,
-                    nova_categoria,
-                    novo_status
-                )
+                with st.spinner("Salvando..."):
+                    sucesso, mensagem = salvar_nova_transacao(
+                        nova_data,
+                        nova_descricao.strip(),
+                        novo_valor,
+                        nova_categoria,
+                        novo_status
+                    )
 
                 if sucesso:
                     st.success(f"✅ {mensagem}")
@@ -240,6 +338,10 @@ def main():
                     st.rerun()
                 else:
                     st.error(f"❌ {mensagem}")
+
+    # Se não há dados, parar aqui
+    if df.empty:
+        st.stop()
 
     # Aplicar filtros
     df_filtrado = df[
