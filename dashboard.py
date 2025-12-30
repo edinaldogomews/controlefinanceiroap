@@ -1,5 +1,5 @@
 """
-Dashboard Financeiro Pessoal
+Somma - Dashboard Financeiro Pessoal
 Desenvolvido com Streamlit, Pandas e Plotly
 Integração com Google Sheets via gspread
 """
@@ -18,14 +18,14 @@ from gspread.exceptions import SpreadsheetNotFound, APIError
 # CONFIGURAÇÃO DA PÁGINA (DEVE SER A PRIMEIRA CHAMADA ST)
 # ============================================================
 st.set_page_config(
-    page_title="Controle Financeiro Pro",
-    page_icon="💸",
+    page_title="Somma - Controle Financeiro",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
         'Get Help': None,
         'Report a bug': None,
-        'About': "### 💸 Controle Financeiro Pro\nDashboard para gerenciamento de despesas pessoais."
+        'About': "### Somma\nDashboard para gerenciamento de despesas pessoais."
     }
 )
 
@@ -124,10 +124,40 @@ st.markdown("""
 # ============================================================
 # LOGO NA SIDEBAR
 # ============================================================
-# Logo placeholder - substitua pela URL da sua logo
-st.sidebar.image(
-    "https://placehold.co/280x80/2E86AB/FFFFFF?text=💸+Controle+Financeiro",
-    use_container_width=True
+# Logo do aplicativo Somma
+st.sidebar.markdown(
+    """
+    <div style="text-align: center; padding: 30px 0;">
+        <h1 style="
+            background: linear-gradient(135deg, #2E86AB 0%, #1a5276 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin: 0;
+            letter-spacing: 3px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        ">💰 Somma</h1>
+        <p style="
+            color: #555;
+            font-size: 1rem;
+            margin-top: 8px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        ">Controle Financeiro</p>
+        <div style="
+            width: 60px;
+            height: 3px;
+            background: linear-gradient(90deg, #2E86AB, #1a5276);
+            margin: 12px auto 0;
+            border-radius: 2px;
+        "></div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 st.sidebar.markdown("---")
 
@@ -430,10 +460,10 @@ def editar_lancamento(indice_dataframe, data_venc, descricao, valor, categoria, 
     except Exception as e:
         return False, f"Erro ao editar: {str(e)}"
 
-
+    st.title("Somma - Dashboard Financeiro")
 def main():
     # Título principal
-    st.title("Dashboard Financeiro Pessoal")
+    st.title("Dashboard Financeiro")
     st.markdown("---")
 
     # Carregar dados
@@ -913,13 +943,13 @@ def main():
             hide_index=True
         )
 
-        st.caption(f"📌 Total de registros exibidos: {len(df_filtrado)}")
+        st.caption(f"Total de registros exibidos: {len(df_filtrado)}")
     else:
         st.warning("Nenhum registro encontrado com os filtros selecionados.")
 
     # ========== RODAPÉ NA SIDEBAR ==========
     st.sidebar.markdown("---")
-    st.sidebar.caption("Dashboard Financeiro Pessoal Gratuito")
+    st.sidebar.caption("Dashboard Financeiro Gratuito")
     st.sidebar.caption("Desenvolvido por Edinaldo Gomes")
     st.sidebar.caption("📧 edinaldosantos.contato@gmail.com")
     st.sidebar.caption("v2025.1.2 | © 2025 Todos os direitos reservados")
