@@ -14,14 +14,126 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from gspread.exceptions import SpreadsheetNotFound, APIError
 
-# Configuração da página
+# ============================================================
+# CONFIGURAÇÃO DA PÁGINA (DEVE SER A PRIMEIRA CHAMADA ST)
+# ============================================================
 st.set_page_config(
-    page_title="Dashboard Financeiro Pessoal",
-    page_icon="💰",
-    layout="wide"
+    page_title="Controle Financeiro Pro",
+    page_icon="💸",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "### 💸 Controle Financeiro Pro\nDashboard para gerenciamento de despesas pessoais."
+    }
 )
 
-# Configurações do Google Sheets
+# ============================================================
+# CSS PERSONALIZADO - PROFISSIONALIZAÇÃO DA INTERFACE
+# ============================================================
+st.markdown("""
+    <style>
+        /* ===== OCULTAR ELEMENTOS PADRÃO DO STREAMLIT ===== */
+        
+        /* Ocultar botão "Deploy" do cabeçalho */
+        .stDeployButton {
+            display: none !important;
+        }
+        
+        /* Ocultar menu hamburguer (3 pontos) do cabeçalho */
+        #MainMenu {
+            visibility: hidden;
+        }
+        
+        /* Ocultar rodapé "Made with Streamlit" */
+        footer {
+            visibility: hidden;
+        }
+        
+        /* Ocultar cabeçalho padrão */
+        header[data-testid="stHeader"] {
+            background: transparent;
+        }
+        
+        /* ===== AJUSTES DE ESPAÇAMENTO ===== */
+        
+        /* Reduzir espaço superior do conteúdo principal */
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 1rem !important;
+        }
+        
+        /* Ajustar padding da sidebar */
+        section[data-testid="stSidebar"] > div:first-child {
+            padding-top: 1rem;
+        }
+        
+        /* ===== ESTILIZAÇÃO DOS CARDS/MÉTRICAS ===== */
+        
+        /* Estilo para os cartões de métricas */
+        div[data-testid="metric-container"] {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        /* ===== ESTILIZAÇÃO DA SIDEBAR ===== */
+        
+        /* Linha divisória mais suave */
+        hr {
+            border: none;
+            border-top: 1px solid #e9ecef;
+            margin: 1rem 0;
+        }
+        
+        /* ===== ESTILIZAÇÃO DOS EXPANDERS ===== */
+        
+        /* Expanders com bordas arredondadas */
+        .streamlit-expanderHeader {
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        
+        /* ===== MELHORIAS NOS BOTÕES ===== */
+        
+        /* Botões com transição suave */
+        .stButton > button {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* ===== TABELA DE DADOS ===== */
+        
+        /* Estilo para a tabela de dados */
+        .stDataFrame {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+    </style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# LOGO NA SIDEBAR
+# ============================================================
+# Logo placeholder - substitua pela URL da sua logo
+st.sidebar.image(
+    "https://placehold.co/280x80/2E86AB/FFFFFF?text=💸+Controle+Financeiro",
+    use_container_width=True
+)
+st.sidebar.markdown("---")
+
+# ============================================================
+# CONFIGURAÇÕES DO GOOGLE SHEETS
+# ============================================================
 CAMINHO_CREDENCIAIS = Path(__file__).parent / "credentials.json"
 NOME_PLANILHA = "Controle Financeiro - DB"
 
@@ -321,7 +433,7 @@ def editar_lancamento(indice_dataframe, data_venc, descricao, valor, categoria, 
 
 def main():
     # Título principal
-    st.title("💰 Dashboard Financeiro Pessoal")
+    st.title("Dashboard Financeiro Pessoal")
     st.markdown("---")
 
     # Carregar dados
@@ -379,78 +491,84 @@ def main():
         st.session_state["limpar_formulario"] = False
 
     with st.sidebar.expander("➕ Adicionar Nova Despesa", expanded=df.empty):
-        # Campo de Data
-        nova_data = st.date_input(
-            "📅 Data de Vencimento",
-            value=st.session_state.get("form_data", date.today()),
-            format="DD/MM/YYYY",
-            key="form_data"
-        )
+        # Container com borda para distinção visual
+        with st.container(border=True):
+            st.subheader("📋 Adicionar Novo Registro")
 
-        # Campo de Descrição
-        nova_descricao = st.text_input(
-            "📝 Descrição",
-            value=st.session_state.get("form_descricao", ""),
-            placeholder="Ex: Conta de Luz",
-            key="form_descricao"
-        )
+            # Linha 1: Data e Valor lado a lado
+            col1, col2 = st.columns(2)
+            with col1:
+                nova_data = st.date_input(
+                    "📅 Data de Vencimento",
+                    value=st.session_state.get("form_data", date.today()),
+                    format="DD/MM/YYYY",
+                    key="form_data"
+                )
+            with col2:
+                novo_valor = st.number_input(
+                    "💵 Valor (R$)",
+                    min_value=0.00,
+                    value=None,
+                    step=0.01,
+                    format="%.2f",
+                    placeholder="0.00",
+                    key="form_valor"
+                )
 
-        # Campo de Valor - inicia vazio para melhor UX
-        novo_valor = st.number_input(
-            "💵 Valor (R$)",
-            min_value=0.00,
-            value=None,
-            step=0.01,
-            format="%.2f",
-            placeholder="0.00",
-            key="form_valor"
-        )
+            # Linha 2: Categoria e Status lado a lado
+            col3, col4 = st.columns(2)
+            with col3:
+                categorias_opcoes = sorted(set(CATEGORIAS_PADRAO + categorias_unicas))
+                nova_categoria = st.selectbox(
+                    "🏷️ Categoria",
+                    options=categorias_opcoes,
+                    key="form_categoria"
+                )
+            with col4:
+                novo_status = st.selectbox(
+                    "📊 Status",
+                    options=["EM ABERTO", "PAGO"],
+                    key="form_status"
+                )
 
-        # Campo de Categoria (combinar categorias padrão com as existentes nos dados)
-        categorias_opcoes = sorted(set(CATEGORIAS_PADRAO + categorias_unicas))
-        nova_categoria = st.selectbox(
-            "🏷️ Categoria",
-            options=categorias_opcoes,
-            key="form_categoria"
-        )
+            # Linha 3: Descrição ocupando largura total
+            nova_descricao = st.text_input(
+                "📝 Descrição",
+                value=st.session_state.get("form_descricao", ""),
+                placeholder="Ex: Conta de Luz",
+                key="form_descricao"
+            )
 
-        # Campo de Status
-        novo_status = st.selectbox(
-            "📊 Status",
-            options=["EM ABERTO", "PAGO"],
-            key="form_status"
-        )
+            # Botão de Salvar
+            if st.button("💾 Salvar Transação", use_container_width=True, type="primary"):
+                # Tratar valor None (campo vazio)
+                valor_para_salvar = novo_valor if novo_valor is not None else 0.0
 
-        # Botão de Salvar
-        if st.button("💾 Salvar Transação", use_container_width=True):
-            # Tratar valor None (campo vazio)
-            valor_para_salvar = novo_valor if novo_valor is not None else 0.0
-
-            # Validações
-            if not nova_descricao.strip():
-                st.error("⚠️ A descrição é obrigatória!")
-            elif valor_para_salvar <= 0:
-                st.error("⚠️ O valor deve ser maior que zero!")
-            else:
-                # Salvar a transação
-                with st.spinner("Salvando..."):
-                    sucesso, mensagem = salvar_nova_transacao(
-                        nova_data,
-                        nova_descricao.strip(),
-                        valor_para_salvar,
-                        nova_categoria,
-                        novo_status
-                    )
-
-                if sucesso:
-                    st.success(f"✅ {mensagem}")
-                    # Ativar flag para limpar formulário no próximo rerun
-                    st.session_state["limpar_formulario"] = True
-                    # Limpar cache e recarregar a página
-                    st.cache_data.clear()
-                    st.rerun()
+                # Validações
+                if not nova_descricao.strip():
+                    st.error("⚠️ A descrição é obrigatória!")
+                elif valor_para_salvar <= 0:
+                    st.error("⚠️ O valor deve ser maior que zero!")
                 else:
-                    st.error(f"❌ {mensagem}")
+                    # Salvar a transação
+                    with st.spinner("Salvando..."):
+                        sucesso, mensagem = salvar_nova_transacao(
+                            nova_data,
+                            nova_descricao.strip(),
+                            valor_para_salvar,
+                            nova_categoria,
+                            novo_status
+                        )
+
+                    if sucesso:
+                        st.success(f"✅ {mensagem}")
+                        # Ativar flag para limpar formulário no próximo rerun
+                        st.session_state["limpar_formulario"] = True
+                        # Limpar cache e recarregar a página
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {mensagem}")
 
     # ========== SIDEBAR - GERENCIAR LANÇAMENTOS (EDITAR / EXCLUIR) ==========
     st.sidebar.markdown("---")
@@ -799,9 +917,12 @@ def main():
     else:
         st.warning("Nenhum registro encontrado com os filtros selecionados.")
 
-    # Rodapé
-    st.markdown("---")
-    st.caption("💡 Dashboard Financeiro Pessoal | Desenvolvido por Edinaldo Gomes com Streamlit, Pandas e Plotly")
+    # ========== RODAPÉ NA SIDEBAR ==========
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Dashboard Financeiro Pessoal Gratuito")
+    st.sidebar.caption("Desenvolvido por Edinaldo Gomes")
+    st.sidebar.caption("📧 edinaldosantos.contato@gmail.com")
+    st.sidebar.caption("v2025.1.2 | © 2025 Todos os direitos reservados")
 
 
 if __name__ == "__main__":
