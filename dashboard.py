@@ -1252,44 +1252,125 @@ def main():
         exibir_rodape(auto_update.versao_local)
         st.stop()
 
-    # Aplicar filtros
+    # ========== CRIAR COLUNA MÊS/ANO PARA FILTRO ==========
+    # Garantir que a coluna Data está em datetime com formato brasileiro
+    df['Data'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
+
+    # Criar coluna auxiliar Mes_Ano (ex: "01/2026")
+    df['Mes_Ano'] = df['Data'].dt.to_period('M').astype(str)
+
+    # Criar versão formatada para exibição (ex: "Janeiro/2026")
+    def formatar_mes_ano_completo(periodo):
+        try:
+            if pd.isna(periodo) or periodo == 'NaT':
+                return 'Sem data'
+            ano, mes = periodo.split('-')
+            meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+            return f"{meses[int(mes)-1]}/{ano}"
+        except:
+            return 'Sem data'
+
+    df['Mes_Ano_Fmt'] = df['Mes_Ano'].apply(formatar_mes_ano_completo)
+
+    # Obter lista de meses únicos, ordenados do mais recente para o mais antigo
+    meses_unicos = df[df['Mes_Ano'] != 'NaT']['Mes_Ano'].dropna().unique().tolist()
+    meses_unicos = sorted(meses_unicos, reverse=True)  # Mais recente primeiro
+
+    # Criar lista formatada para exibição
+    meses_formatados = [formatar_mes_ano_completo(m) for m in meses_unicos]
+
+    # ========== SIDEBAR - FILTRO DE MÊS ==========
+    st.sidebar.header("📅 Período")
+
+    if meses_formatados:
+        # Adicionar opção "Todos os meses" no início
+        opcoes_meses = ["Todos os meses"] + meses_formatados
+
+        # Determinar o mês atual do sistema do usuário
+        mes_atual_sistema = datetime.now().strftime('%Y-%m')  # Ex: "2026-01"
+
+        # Tentar encontrar o mês atual nos dados disponíveis
+        if mes_atual_sistema in meses_unicos:
+            # Mês atual existe nos dados - seleciona ele
+            idx_mes_atual = meses_unicos.index(mes_atual_sistema)
+            indice_padrao = idx_mes_atual + 1  # +1 porque "Todos os meses" está no índice 0
+        else:
+            # Mês atual não existe - seleciona o mais recente disponível
+            indice_padrao = 1 if len(opcoes_meses) > 1 else 0
+
+        mes_selecionado_fmt = st.sidebar.selectbox(
+            "Selecione o Mês",
+            options=opcoes_meses,
+            index=indice_padrao,
+            key="filtro_mes"
+        )
+
+        # Determinar o mês selecionado no formato original
+        if mes_selecionado_fmt == "Todos os meses":
+            mes_selecionado = None
+        else:
+            idx = meses_formatados.index(mes_selecionado_fmt)
+            mes_selecionado = meses_unicos[idx]
+    else:
+        mes_selecionado = None
+        mes_selecionado_fmt = "Todos os meses"
+
+    # Aplicar filtros de tipo e categoria
     df_filtrado = df[
         (df['Tipo'].isin(tipos_selecionados)) &
         (df['Categoria'].isin(categorias_selecionadas))
     ]
+
+    # ========== SEGREGAÇÃO DE DADOS ==========
+    # df_filtrado = dados com filtros de tipo/categoria (todo o histórico)
+    # df_mes = dados do mês selecionado (para tabela e gráficos)
+
+    if mes_selecionado is not None:
+        df_mes = df_filtrado[df_filtrado['Mes_Ano'] == mes_selecionado].copy()
+    else:
+        df_mes = df_filtrado.copy()
 
     # ========== KPIs - MÉTRICAS PRINCIPAIS ==========
     st.subheader("📊 Resumo Financeiro")
 
     col1, col2, col3, col4 = st.columns(4)
 
-    total_receitas = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
-    total_despesas = df_filtrado[df_filtrado['Tipo'] == 'Despesa']['Valor'].sum()
-    saldo = total_receitas - total_despesas
+    # SALDO TOTAL: Calculado sobre TODO o histórico (df_filtrado)
+    total_receitas_geral = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
+    total_despesas_geral = df_filtrado[df_filtrado['Tipo'] == 'Despesa']['Valor'].sum()
+    saldo_total = total_receitas_geral - total_despesas_geral
+
+    # RECEITAS/DESPESAS DO MÊS: Calculadas apenas sobre o mês selecionado (df_mes)
+    total_receitas_mes = df_mes[df_mes['Tipo'] == 'Receita']['Valor'].sum()
+    total_despesas_mes = df_mes[df_mes['Tipo'] == 'Despesa']['Valor'].sum()
+
+    # Label dinâmico para os cards do mês
+    label_periodo = f" ({mes_selecionado_fmt})" if mes_selecionado is not None else " (Geral)"
 
     with col1:
         st.metric(
-            label="💵 Total de Receitas",
-            value=f"R$ {total_receitas:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            label=f"💵 Receitas{label_periodo}",
+            value=f"R$ {total_receitas_mes:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         )
 
     with col2:
         st.metric(
-            label="💸 Total de Despesas",
-            value=f"R$ {total_despesas:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            label=f"💸 Despesas{label_periodo}",
+            value=f"R$ {total_despesas_mes:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         )
 
     with col3:
         st.metric(
-            label="💰 Saldo",
-            value=f"R$ {saldo:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'),
-            delta=f"{'Positivo' if saldo >= 0 else 'Negativo'}"
+            label="💰 Saldo Total (Acumulado)",
+            value=f"R$ {saldo_total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'),
+            delta=f"{'Positivo' if saldo_total >= 0 else 'Negativo'}"
         )
 
     with col4:
         st.metric(
-            label="📋 Total de Transações",
-            value=len(df_filtrado)
+            label=f"📋 Transações{label_periodo}",
+            value=len(df_mes)
         )
 
     st.markdown("---")
@@ -1300,10 +1381,10 @@ def main():
     col_grafico1, col_grafico2 = st.columns(2)
 
     with col_grafico1:
-        st.markdown("#### 🍩 Gastos por Categoria")
+        st.markdown(f"#### 🍩 Gastos por Categoria{label_periodo}")
 
-        if not df_filtrado.empty:
-            gastos_categoria = df_filtrado.groupby('Categoria')['Valor'].sum().reset_index()
+        if not df_mes.empty:
+            gastos_categoria = df_mes.groupby('Categoria')['Valor'].sum().reset_index()
             gastos_categoria = gastos_categoria.sort_values('Valor', ascending=False)
 
             fig_rosca = px.pie(
@@ -1325,13 +1406,13 @@ def main():
             )
             st.plotly_chart(fig_rosca, use_container_width=True)
         else:
-            st.info("Nenhum dado disponível.")
+            st.info("Nenhum dado disponível para o período selecionado.")
 
     with col_grafico2:
         st.markdown("#### 📅 Movimentação por Mês")
 
-        if not df_filtrado.empty:
-            df_mensal = df_filtrado.copy()
+        if not df_mes.empty:
+            df_mensal = df_mes.copy()
             df_mensal = df_mensal.dropna(subset=['Data'])
 
             if not df_mensal.empty:
@@ -1366,14 +1447,14 @@ def main():
             else:
                 st.info("Nenhum dado com data válida.")
         else:
-            st.info("Nenhum dado disponível.")
+            st.info("Nenhum dado disponível para o período selecionado.")
 
-    st.markdown("#### 📊 Receitas vs Despesas")
+    st.markdown(f"#### 📊 Receitas vs Despesas{label_periodo}")
 
-    if not df_filtrado.empty:
+    if not df_mes.empty:
         comparativo = pd.DataFrame({
             'Tipo': ['Receitas', 'Despesas'],
-            'Valor': [total_receitas, total_despesas]
+            'Valor': [total_receitas_mes, total_despesas_mes]
         })
 
         fig_comp = px.bar(
@@ -1396,24 +1477,32 @@ def main():
             margin=dict(t=20, b=20, l=20, r=20)
         )
         st.plotly_chart(fig_comp, use_container_width=True)
+    else:
+        st.info("Nenhum dado disponível para o período selecionado.")
 
     st.markdown("---")
 
     # ========== TABELA DE DADOS ==========
-    st.subheader("📋 Dados Detalhados")
+    # Título dinâmico com o mês selecionado
+    titulo_tabela = f"📋 Transações de {mes_selecionado_fmt}" if mes_selecionado is not None else "📋 Todas as Transações"
+    st.subheader(titulo_tabela)
 
-    if not df_filtrado.empty:
-        df_exibicao = df_filtrado.copy()
+    if not df_mes.empty:
+        df_exibicao = df_mes.copy()
         df_exibicao['Valor'] = df_exibicao['Valor'].apply(
             lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         )
         df_exibicao['Data'] = df_exibicao['Data'].dt.strftime('%d/%m/%Y')
         df_exibicao['Data'] = df_exibicao['Data'].fillna('Não informado')
 
+        # Remover colunas auxiliares da exibição
+        colunas_exibir = [col for col in df_exibicao.columns if col not in ['Mes_Ano', 'Mes_Ano_Fmt']]
+        df_exibicao = df_exibicao[colunas_exibir]
+
         st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
-        st.caption(f"Total de registros: {len(df_filtrado)}")
+        st.caption(f"Total de registros no período: {len(df_mes)}")
     else:
-        st.warning("Nenhum registro encontrado com os filtros selecionados.")
+        st.warning("Nenhum registro encontrado para o período selecionado.")
 
     # ========== RODAPÉ ==========
     exibir_rodape(auto_update.versao_local)
@@ -1431,4 +1520,3 @@ def exibir_rodape(versao_local: str):
 
 if __name__ == "__main__":
     main()
-
