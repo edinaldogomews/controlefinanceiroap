@@ -8,8 +8,18 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timedelta
 import os
+import shutil
+import tempfile
+import zipfile
+
+# Imports para Auto-Update
+try:
+    import requests
+    REQUESTS_DISPONIVEL = True
+except ImportError:
+    REQUESTS_DISPONIVEL = False
 
 # Imports para Google Sheets (opcional)
 try:
@@ -45,14 +55,14 @@ st.markdown("""
         #MainMenu { visibility: hidden; }
         footer { visibility: hidden; }
         header[data-testid="stHeader"] { background: transparent; }
-        
+
         /* ===== AJUSTES DE ESPAÇAMENTO ===== */
         .block-container {
             padding-top: 2rem !important;
             padding-bottom: 1rem !important;
         }
         section[data-testid="stSidebar"] > div:first-child { padding-top: 1rem; }
-        
+
         /* ===== ESTILIZAÇÃO DOS CARDS/MÉTRICAS ===== */
         div[data-testid="metric-container"] {
             background-color: #f8f9fa;
@@ -61,10 +71,10 @@ st.markdown("""
             padding: 15px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        
+
         /* ===== ESTILIZAÇÃO DA SIDEBAR ===== */
         hr { border: none; border-top: 1px solid #e9ecef; margin: 1rem 0; }
-        
+
         /* ===== MELHORIAS NOS BOTÕES ===== */
         .stButton > button {
             transition: all 0.3s ease;
@@ -74,9 +84,18 @@ st.markdown("""
             transform: translateY(-1px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        
+
         /* ===== TABELA DE DADOS ===== */
         .stDataFrame { border-radius: 10px; overflow: hidden; }
+
+        /* ===== ESTILO DO AVISO DE ATUALIZAÇÃO ===== */
+        .update-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            color: white;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -144,6 +163,256 @@ CATEGORIAS_PADRAO = [
 
 # Tipos de transação
 TIPOS_TRANSACAO = ['Despesa', 'Receita']
+
+# ============================================================
+# CONFIGURAÇÕES DE AUTO-UPDATE
+# ============================================================
+GITHUB_OWNER = "edinaldogomews"
+GITHUB_REPO = "controlefinanceiroap"
+GITHUB_BRANCH = "main"
+CAMINHO_VERSION = Path(__file__).parent / "version.txt"
+CAMINHO_PREFERENCIAS = Path(__file__).parent / "preferencias_update.csv"
+
+# Arquivos/pastas que NÃO devem ser sobrescritos durante atualização
+ARQUIVOS_PROTEGIDOS = [
+    'credentials.json',
+    'credenciais.json',
+    'dados_financeiros.csv',
+    'preferencias_update.csv',
+    '.env',
+    'venv',
+    '.venv',
+    '__pycache__',
+]
+
+
+# ============================================================
+# SISTEMA DE AUTO-UPDATE
+# ============================================================
+class AutoUpdate:
+    """
+    Sistema de atualização automática via GitHub.
+    Verifica versões e realiza update preservando dados do usuário.
+    """
+
+    def __init__(self):
+        self.versao_local = self._ler_versao_local()
+        self.versao_remota = None
+        self.url_zip = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/archive/refs/heads/{GITHUB_BRANCH}.zip"
+        self.url_version = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/{GITHUB_BRANCH}/version.txt"
+
+    def _ler_versao_local(self) -> str:
+        """Lê a versão do arquivo local version.txt."""
+        try:
+            if CAMINHO_VERSION.exists():
+                return CAMINHO_VERSION.read_text(encoding='utf-8').strip()
+            return "0.0.0"
+        except Exception:
+            return "0.0.0"
+
+    def verificar_atualizacao(self) -> tuple:
+        """
+        Verifica se há uma nova versão disponível no GitHub.
+
+        Returns:
+            tuple: (tem_atualizacao: bool, versao_remota: str, mensagem: str)
+        """
+        if not REQUESTS_DISPONIVEL:
+            return False, self.versao_local, "Biblioteca 'requests' não instalada."
+
+        try:
+            response = requests.get(self.url_version, timeout=10)
+            response.raise_for_status()
+            self.versao_remota = response.text.strip()
+
+            if self.versao_remota != self.versao_local:
+                return True, self.versao_remota, f"Nova versão disponível: {self.versao_remota}"
+            else:
+                return False, self.versao_remota, "Você está usando a versão mais recente."
+
+        except requests.exceptions.Timeout:
+            return False, self.versao_local, "Tempo limite excedido ao verificar atualizações."
+        except requests.exceptions.ConnectionError:
+            return False, self.versao_local, "Sem conexão com a internet."
+        except Exception as e:
+            return False, self.versao_local, f"Erro ao verificar: {str(e)}"
+
+    def realizar_update(self, progress_callback=None) -> tuple:
+        """
+        Realiza o download e instalação da atualização.
+
+        Args:
+            progress_callback: Função para atualizar progresso (recebe texto e percentual)
+
+        Returns:
+            tuple: (sucesso: bool, mensagem: str)
+        """
+        if not REQUESTS_DISPONIVEL:
+            return False, "Biblioteca 'requests' não instalada."
+
+        pasta_app = Path(__file__).parent
+        pasta_temp = None
+
+        try:
+            # Etapa 1: Download do ZIP
+            if progress_callback:
+                progress_callback("📥 Baixando atualização...", 0.1)
+
+            response = requests.get(self.url_zip, timeout=60, stream=True)
+            response.raise_for_status()
+
+            # Salvar ZIP em pasta temporária
+            pasta_temp = Path(tempfile.mkdtemp())
+            caminho_zip = pasta_temp / "update.zip"
+
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+
+            with open(caminho_zip, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0 and progress_callback:
+                            progress = 0.1 + (downloaded / total_size) * 0.3
+                            progress_callback(f"📥 Baixando... {downloaded // 1024} KB", progress)
+
+            if progress_callback:
+                progress_callback("📦 Extraindo arquivos...", 0.45)
+
+            # Etapa 2: Extrair ZIP
+            pasta_extracao = pasta_temp / "extracted"
+            with zipfile.ZipFile(caminho_zip, 'r') as zip_ref:
+                zip_ref.extractall(pasta_extracao)
+
+            # Encontrar pasta raiz do repositório extraído
+            pastas_extraidas = list(pasta_extracao.iterdir())
+            if not pastas_extraidas:
+                return False, "Arquivo ZIP vazio ou corrompido."
+
+            pasta_repo = pastas_extraidas[0]  # Ex: controlefinanceiroap-main
+
+            if progress_callback:
+                progress_callback("🔄 Atualizando arquivos...", 0.6)
+
+            # Etapa 3: Copiar arquivos (exceto protegidos)
+            arquivos_atualizados = 0
+            arquivos_ignorados = 0
+
+            for item in pasta_repo.iterdir():
+                nome_item = item.name
+
+                # Verificar se é arquivo/pasta protegido
+                if nome_item in ARQUIVOS_PROTEGIDOS:
+                    arquivos_ignorados += 1
+                    continue
+
+                destino = pasta_app / nome_item
+
+                try:
+                    if item.is_file():
+                        shutil.copy2(item, destino)
+                        arquivos_atualizados += 1
+                    elif item.is_dir():
+                        # Se a pasta já existe, remover antes de copiar
+                        if destino.exists():
+                            shutil.rmtree(destino)
+                        shutil.copytree(item, destino)
+                        arquivos_atualizados += 1
+                except Exception as e:
+                    # Continuar mesmo se um arquivo falhar
+                    print(f"Aviso: Não foi possível atualizar {nome_item}: {e}")
+
+            if progress_callback:
+                progress_callback("🧹 Limpando arquivos temporários...", 0.9)
+
+            # Etapa 4: Limpar pasta temporária
+            try:
+                shutil.rmtree(pasta_temp)
+            except Exception:
+                pass  # Ignorar erros de limpeza
+
+            if progress_callback:
+                progress_callback("✅ Atualização concluída!", 1.0)
+
+            return True, f"Atualização concluída! {arquivos_atualizados} arquivos atualizados."
+
+        except requests.exceptions.Timeout:
+            return False, "Tempo limite excedido durante o download."
+        except requests.exceptions.ConnectionError:
+            return False, "Falha na conexão durante o download."
+        except zipfile.BadZipFile:
+            return False, "Arquivo de atualização corrompido."
+        except PermissionError:
+            return False, "Sem permissão para atualizar arquivos. Execute como administrador."
+        except Exception as e:
+            return False, f"Erro durante atualização: {str(e)}"
+        finally:
+            # Garantir limpeza da pasta temporária
+            if pasta_temp and pasta_temp.exists():
+                try:
+                    shutil.rmtree(pasta_temp)
+                except Exception:
+                    pass
+
+
+# ============================================================
+# FUNÇÕES DE PREFERÊNCIAS DE ATUALIZAÇÃO
+# ============================================================
+def carregar_preferencias_update() -> dict:
+    """Carrega preferências de atualização do usuário."""
+    try:
+        if CAMINHO_PREFERENCIAS.exists():
+            df = pd.read_csv(CAMINHO_PREFERENCIAS)
+            if not df.empty:
+                return df.iloc[0].to_dict()
+    except Exception:
+        pass
+
+    return {
+        'nao_perguntar': False,
+        'lembrar_depois': False,
+        'lembrar_data': '',
+        'versao_ignorada': ''
+    }
+
+
+def salvar_preferencias_update(preferencias: dict):
+    """Salva preferências de atualização do usuário."""
+    try:
+        df = pd.DataFrame([preferencias])
+        df.to_csv(CAMINHO_PREFERENCIAS, index=False)
+    except Exception:
+        pass
+
+
+def deve_mostrar_atualizacao(versao_remota: str) -> bool:
+    """Verifica se deve mostrar o aviso de atualização baseado nas preferências."""
+    prefs = carregar_preferencias_update()
+
+    # Se marcou "não perguntar novamente" para esta versão
+    if prefs.get('nao_perguntar') and prefs.get('versao_ignorada') == versao_remota:
+        return False
+
+    # Se marcou "lembrar depois", verificar se já passou 24 horas
+    if prefs.get('lembrar_depois') and prefs.get('lembrar_data'):
+        try:
+            data_lembrar = datetime.fromisoformat(prefs['lembrar_data'])
+            if datetime.now() < data_lembrar:
+                return False
+        except Exception:
+            pass
+
+    return True
+
+
+def resetar_preferencias_update():
+    """Reseta as preferências de atualização."""
+    try:
+        if CAMINHO_PREFERENCIAS.exists():
+            CAMINHO_PREFERENCIAS.unlink()
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -621,6 +890,24 @@ def main():
     # Obter sistema de armazenamento
     armazenamento = get_armazenamento()
 
+    # ========== SISTEMA DE AUTO-UPDATE ==========
+    auto_update = AutoUpdate()
+
+    # Inicializar estados do session_state para Auto-Update
+    if 'update_verificado' not in st.session_state:
+        st.session_state['update_verificado'] = False
+        st.session_state['update_disponivel'] = False
+        st.session_state['versao_remota'] = auto_update.versao_local
+        st.session_state['update_msg'] = ''
+
+    # Verificar atualização apenas uma vez por sessão
+    if not st.session_state['update_verificado'] and REQUESTS_DISPONIVEL:
+        tem_update, versao_remota, msg = auto_update.verificar_atualizacao()
+        st.session_state['update_verificado'] = True
+        st.session_state['update_disponivel'] = tem_update
+        st.session_state['versao_remota'] = versao_remota
+        st.session_state['update_msg'] = msg
+
     # ========== INDICADOR DE CONEXÃO NO TOPO ==========
     modo_texto, modo_tipo, is_online = armazenamento.get_modo_info()
 
@@ -682,6 +969,87 @@ def main():
     else:
         tipos_unicos = df['Tipo'].unique().tolist()
         categorias_unicas = df['Categoria'].unique().tolist()
+
+    # ========== SIDEBAR - AVISO DE ATUALIZAÇÃO ==========
+    if st.session_state.get('update_disponivel', False):
+        versao_remota = st.session_state.get('versao_remota', '')
+
+        # Verificar preferências do usuário
+        if deve_mostrar_atualizacao(versao_remota):
+            st.sidebar.markdown(
+                f"""
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 10px;
+                    padding: 15px;
+                    margin-bottom: 15px;
+                    color: white;
+                    text-align: center;
+                ">
+                    <p style="margin: 0; font-weight: bold; font-size: 1.1rem;">
+                        🆕 Nova versão disponível!
+                    </p>
+                    <p style="margin: 5px 0; font-size: 0.9rem;">
+                        {auto_update.versao_local} → {versao_remota}
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # Botão de Atualização
+            if st.sidebar.button("🔄 Atualizar Versão", use_container_width=True, type="primary"):
+                # Criar container de progresso
+                progress_container = st.sidebar.empty()
+                status_container = st.sidebar.empty()
+
+                def atualizar_progresso(texto, percentual):
+                    progress_container.progress(percentual, text=texto)
+
+                with st.spinner("Atualizando..."):
+                    sucesso, mensagem = auto_update.realizar_update(atualizar_progresso)
+
+                if sucesso:
+                    progress_container.empty()
+                    status_container.success(f"✅ {mensagem}")
+                    st.balloons()
+                    # Limpar preferências após atualização bem-sucedida
+                    resetar_preferencias_update()
+                    st.session_state['update_disponivel'] = False
+                    st.session_state['update_verificado'] = False
+                    import time
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    progress_container.empty()
+                    status_container.error(f"❌ {mensagem}")
+
+            # Botões de opções
+            col_lembrar, col_ignorar = st.sidebar.columns(2)
+
+            with col_lembrar:
+                if st.button("⏰ Depois", use_container_width=True, help="Lembrar em 24 horas"):
+                    prefs = {
+                        'nao_perguntar': False,
+                        'lembrar_depois': True,
+                        'lembrar_data': (datetime.now() + timedelta(hours=24)).isoformat(),
+                        'versao_ignorada': ''
+                    }
+                    salvar_preferencias_update(prefs)
+                    st.rerun()
+
+            with col_ignorar:
+                if st.button("🚫 Ignorar", use_container_width=True, help="Não perguntar para esta versão"):
+                    prefs = {
+                        'nao_perguntar': True,
+                        'lembrar_depois': False,
+                        'lembrar_data': '',
+                        'versao_ignorada': versao_remota
+                    }
+                    salvar_preferencias_update(prefs)
+                    st.rerun()
+
+            st.sidebar.markdown("---")
 
     # ========== SIDEBAR - FILTROS ==========
     st.sidebar.header("🔍 Filtros")
@@ -880,6 +1248,8 @@ def main():
 
     # Se não há dados, parar aqui
     if df.empty:
+        # Ainda mostra o rodapé antes de parar
+        exibir_rodape(auto_update.versao_local)
         st.stop()
 
     # Aplicar filtros
@@ -1046,12 +1416,19 @@ def main():
         st.warning("Nenhum registro encontrado com os filtros selecionados.")
 
     # ========== RODAPÉ ==========
+    exibir_rodape(auto_update.versao_local)
+
+
+def exibir_rodape(versao_local: str):
+    """Exibe o rodapé da sidebar com informações de versão."""
     st.sidebar.markdown("---")
     st.sidebar.caption("Dashboard Financeiro Gratuito")
     st.sidebar.caption("Desenvolvido por Edinaldo Gomes")
     st.sidebar.caption("📧 edinaldosantos.contato@gmail.com")
-    st.sidebar.caption("v2025.1.4 | © 2025 Todos os direitos reservados")
+    st.sidebar.caption(f"📦 Versão: {versao_local}")
+    st.sidebar.caption("© 2025 Todos os direitos reservados")
 
 
 if __name__ == "__main__":
     main()
+
