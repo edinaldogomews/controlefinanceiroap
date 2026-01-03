@@ -19,7 +19,11 @@ from utils import (
     carregar_dados,
     # Novas funções para contas dinâmicas
     obter_todas_contas_para_filtro,
-    calcular_saldo_anterior_dinamico
+    calcular_saldo_anterior_dinamico,
+    # NOVAS FUNÇÕES para Cold Start
+    obter_soma_saldos_iniciais_por_tipo,
+    calcular_saldos_atuais,
+    carregar_contas
 )
 
 # ============================================================
@@ -41,8 +45,8 @@ aplicar_estilo_global()
 # ============================================================
 
 def obter_nome_dia_semana(data: date) -> str:
-    """Retorna o nome abreviado do dia da semana em português."""
-    dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+    """Retorna o nome completo do dia da semana em português."""
+    dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
     return dias[data.weekday()]
 
 
@@ -53,16 +57,20 @@ def obter_nome_mes(mes: int) -> str:
     return meses[mes]
 
 
-def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFrame:
+def gerar_fluxo_caixa_diario(df: pd.DataFrame, data_inicio: date, data_fim: date) -> tuple:
     """
-    Gera o fluxo de caixa diário (ledger) com todos os dias do mês.
+    Gera o fluxo de caixa diário (ledger) para um período arbitrário.
     Usa sistema dinâmico de contas (Disponível vs Benefício).
+
+    SUPORTA: Períodos mensais, semestrais e anuais.
+
+    Args:
+        df: DataFrame com as transações
+        data_inicio: Data inicial do período (primeiro dia)
+        data_fim: Data final do período (último dia)
 
     Retorna um DataFrame com: Data, Entradas, Saídas, Saldo Dia, Saldo Acum Disponível, Saldo Acum Benefício
     """
-    primeiro_dia = date(ano, mes, 1)
-    ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
-
     # Preparar dados
     df = df.copy()
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
@@ -73,23 +81,24 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     contas_disponiveis = info_contas['disponiveis']  # Inclui 'Comum' + contas cadastradas tipo Disponível
     contas_beneficio = info_contas['beneficios']      # Inclui 'Vale Refeição' + contas cadastradas tipo Benefício
 
-    # Calcular saldos anteriores ao mês usando listas dinâmicas
-    saldo_ant_disponivel = calcular_saldo_anterior_dinamico(df, 'Disponível', primeiro_dia)
-    saldo_ant_beneficio = calcular_saldo_anterior_dinamico(df, 'Benefício', primeiro_dia)
+    # ========== CÁLCULO DO SALDO INICIAL (até data_inicio - 1 dia) ==========
+    # Saldo Anterior = Soma(Saldos Iniciais) + Soma(Transações anteriores ao período)
+    saldo_ant_disponivel = calcular_saldo_anterior_dinamico(df, 'Disponível', data_inicio)
+    saldo_ant_beneficio = calcular_saldo_anterior_dinamico(df, 'Benefício', data_inicio)
 
-    # Filtrar transações do mês
-    df_mes = df[
-        (df['Data'].dt.year == ano) &
-        (df['Data'].dt.month == mes)
+    # Filtrar transações do período selecionado
+    df_periodo = df[
+        (df['Data'].dt.date >= data_inicio) &
+        (df['Data'].dt.date <= data_fim)
     ].copy()
 
-    # Criar DataFrame com todos os dias do mês
-    dias_do_mes = pd.date_range(start=primeiro_dia, end=ultimo_dia, freq='D')
-    df_calendario = pd.DataFrame({'Data': dias_do_mes})
+    # Criar DataFrame com todos os dias do período
+    dias_do_periodo = pd.date_range(start=data_inicio, end=data_fim, freq='D')
+    df_calendario = pd.DataFrame({'Data': dias_do_periodo})
 
     # Agrupar transações por dia e tipo de conta (usando listas dinâmicas)
     # Entradas (Receitas) - Contas Disponíveis
-    df_receitas_disp = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'].isin(contas_disponiveis))]
+    df_receitas_disp = df_periodo[(df_periodo['Tipo'] == 'Receita') & (df_periodo['Conta'].isin(contas_disponiveis))]
     if not df_receitas_disp.empty:
         entradas_disp = df_receitas_disp.groupby(df_receitas_disp['Data'].dt.date)['Valor'].sum().reset_index()
         entradas_disp.columns = ['Data', 'Entradas_Disponivel']
@@ -97,7 +106,7 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
         entradas_disp = pd.DataFrame(columns=['Data', 'Entradas_Disponivel'])
 
     # Entradas (Receitas) - Contas Benefício
-    df_receitas_benef = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'].isin(contas_beneficio))]
+    df_receitas_benef = df_periodo[(df_periodo['Tipo'] == 'Receita') & (df_periodo['Conta'].isin(contas_beneficio))]
     if not df_receitas_benef.empty:
         entradas_benef = df_receitas_benef.groupby(df_receitas_benef['Data'].dt.date)['Valor'].sum().reset_index()
         entradas_benef.columns = ['Data', 'Entradas_Beneficio']
@@ -105,7 +114,7 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
         entradas_benef = pd.DataFrame(columns=['Data', 'Entradas_Beneficio'])
 
     # Saídas (Despesas) - Contas Disponíveis
-    df_despesas_disp = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'].isin(contas_disponiveis))]
+    df_despesas_disp = df_periodo[(df_periodo['Tipo'] == 'Despesa') & (df_periodo['Conta'].isin(contas_disponiveis))]
     if not df_despesas_disp.empty:
         saidas_disp = df_despesas_disp.groupby(df_despesas_disp['Data'].dt.date)['Valor'].sum().reset_index()
         saidas_disp.columns = ['Data', 'Saidas_Disponivel']
@@ -113,7 +122,7 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
         saidas_disp = pd.DataFrame(columns=['Data', 'Saidas_Disponivel'])
 
     # Saídas (Despesas) - Contas Benefício
-    df_despesas_benef = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'].isin(contas_beneficio))]
+    df_despesas_benef = df_periodo[(df_periodo['Tipo'] == 'Despesa') & (df_periodo['Conta'].isin(contas_beneficio))]
     if not df_despesas_benef.empty:
         saidas_benef = df_despesas_benef.groupby(df_despesas_benef['Data'].dt.date)['Valor'].sum().reset_index()
         saidas_benef.columns = ['Data', 'Saidas_Beneficio']
@@ -159,6 +168,7 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     df_resultado['Saldo_Dia_Beneficio'] = df_resultado['Entradas_Beneficio'] - df_resultado['Saidas_Beneficio']
 
     # Calcular saldo acumulado (running total) por tipo de conta
+    # INCLUI SALDO INICIAL DAS CONTAS (calculado até data_inicio - 1)
     df_resultado['Saldo_Acum_Comum'] = saldo_ant_disponivel + df_resultado['Saldo_Dia_Disponivel'].cumsum()
     df_resultado['Saldo_Acum_VR'] = saldo_ant_beneficio + df_resultado['Saldo_Dia_Beneficio'].cumsum()
 
@@ -170,7 +180,7 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     # Limpar colunas auxiliares
     df_resultado = df_resultado.drop(columns=['Data_date'], errors='ignore')
 
-    # Retornar com nomes compatíveis (saldo_ant_comum e saldo_ant_vr para compatibilidade)
+    # Retornar com nomes compatíveis
     return df_resultado, saldo_ant_disponivel, saldo_ant_beneficio
 
 
@@ -241,48 +251,117 @@ def main():
     # Carregar dados
     df = carregar_dados()
 
+    # Carregar contas para verificar Cold Start
+    contas = carregar_contas()
+
     # Data de hoje
     data_hoje = date.today()
 
     # ========== SIDEBAR - SELEÇÃO DE MÊS/ANO ==========
     st.sidebar.header("📅 Período")
 
-    meses_opcoes = {
-        'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4,
-        'Maio': 5, 'Junho': 6, 'Julho': 7, 'Agosto': 8,
-        'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
-    }
+    # Modo de visualização
+    modo_visualizacao = st.sidebar.selectbox(
+        "Modo de Visualização",
+        options=["Mensal", "Semestral", "Anual"],
+        index=0,
+        key="modo_viz"
+    )
 
-    col_mes, col_ano = st.sidebar.columns(2)
+    # Ano atual para referência
+    ano_atual = data_hoje.year
 
-    with col_mes:
-        mes_nome = st.selectbox(
-            "Mês",
-            options=list(meses_opcoes.keys()),
-            index=data_hoje.month - 1,
-            key="prev_mes"
-        )
-        mes_selecionado = meses_opcoes[mes_nome]
+    # Lógica condicional baseada no modo de visualização
+    if modo_visualizacao == "Mensal":
+        # Seletores de Mês e Ano
+        meses_opcoes = {
+            'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4,
+            'Maio': 5, 'Junho': 6, 'Julho': 7, 'Agosto': 8,
+            'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
+        }
 
-    with col_ano:
-        ano_atual = data_hoje.year
+        col_mes, col_ano = st.sidebar.columns(2)
+
+        with col_mes:
+            mes_nome = st.selectbox(
+                "Mês",
+                options=list(meses_opcoes.keys()),
+                index=data_hoje.month - 1,
+                key="prev_mes"
+            )
+            mes_selecionado = meses_opcoes[mes_nome]
+
+        with col_ano:
+            anos_opcoes = list(range(ano_atual - 1, ano_atual + 3))
+            ano_selecionado = st.selectbox(
+                "Ano",
+                options=anos_opcoes,
+                index=anos_opcoes.index(ano_atual),
+                key="prev_ano"
+            )
+
+        # Definir período - Mensal
+        data_inicio = date(ano_selecionado, mes_selecionado, 1)
+        ultimo_dia_mes = calendar.monthrange(ano_selecionado, mes_selecionado)[1]
+        data_fim = date(ano_selecionado, mes_selecionado, ultimo_dia_mes)
+
+    elif modo_visualizacao == "Semestral":
+        # Seletores de Semestre e Ano
+        col_sem, col_ano = st.sidebar.columns(2)
+
+        with col_sem:
+            semestre = st.selectbox(
+                "Semestre",
+                options=["1º Semestre", "2º Semestre"],
+                index=0 if data_hoje.month <= 6 else 1,
+                key="prev_semestre"
+            )
+
+        with col_ano:
+            anos_opcoes = list(range(ano_atual - 1, ano_atual + 3))
+            ano_selecionado = st.selectbox(
+                "Ano",
+                options=anos_opcoes,
+                index=anos_opcoes.index(ano_atual),
+                key="prev_ano_sem"
+            )
+
+        # Definir período - Semestral
+        if semestre == "1º Semestre":
+            data_inicio = date(ano_selecionado, 1, 1)
+            data_fim = date(ano_selecionado, 6, 30)
+        else:
+            data_inicio = date(ano_selecionado, 7, 1)
+            data_fim = date(ano_selecionado, 12, 31)
+
+    else:  # Anual
+        # Apenas seletor de Ano
         anos_opcoes = list(range(ano_atual - 1, ano_atual + 3))
-        ano_selecionado = st.selectbox(
+        ano_selecionado = st.sidebar.selectbox(
             "Ano",
             options=anos_opcoes,
             index=anos_opcoes.index(ano_atual),
-            key="prev_ano"
+            key="prev_ano_anual"
         )
 
-    # ========== VERIFICAR SE HÁ DADOS ==========
-    if df.empty:
-        st.warning("⚠️ Nenhuma transação encontrada.")
-        st.info("💡 Acesse **Registrar** para adicionar suas primeiras transações!")
+        # Definir período - Anual
+        data_inicio = date(ano_selecionado, 1, 1)
+        data_fim = date(ano_selecionado, 12, 31)
+
+    # DEBUG: Exibir datas para teste
+    st.sidebar.markdown("---")
+    st.sidebar.caption(f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
+
+    # ========== COLD START: VERIFICAR SE HÁ CONTAS CADASTRADAS ==========
+    # Mesmo sem transações, podemos mostrar a previsibilidade com Saldo Inicial
+    if df.empty and not contas:
+        st.warning("⚠️ Nenhuma transação ou conta encontrada.")
+        st.info("💡 Acesse **Contas e Cartões** para cadastrar suas contas com saldo inicial, ou **Registrar** para adicionar transações!")
         exibir_rodape()
         st.stop()
 
-    # ========== GERAR FLUXO DE CAIXA ==========
-    df_fluxo, saldo_ant_comum, saldo_ant_vr = gerar_fluxo_caixa_diario(df, ano_selecionado, mes_selecionado)
+    # ========== GERAR FLUXO DE CAIXA (funciona mesmo sem transações) ==========
+    df_fluxo, saldo_ant_comum, saldo_ant_vr = gerar_fluxo_caixa_diario(df, data_inicio, data_fim)
 
     # Calcular métricas do resumo
     saldo_inicial_total = saldo_ant_comum + saldo_ant_vr
@@ -299,10 +378,29 @@ def main():
         total_saidas = 0
 
     saldo_final_total = saldo_final_comum + saldo_final_vr
-    resultado_mes = total_entradas - total_saidas
+    resultado_periodo = total_entradas - total_saidas
+
+    # ========== TÍTULO DINÂMICO DO RESUMO ==========
+    if modo_visualizacao == "Mensal":
+        titulo_periodo = f"{obter_nome_mes(data_inicio.month)} {data_inicio.year}"
+        titulo_fluxo = f"Fluxo de Caixa - {obter_nome_mes(data_inicio.month)} {data_inicio.year}"
+        altura_tabela = 1123  # ~31 dias (ajustado para mostrar todos)
+    elif modo_visualizacao == "Semestral":
+        sem_num = "1º" if data_inicio.month == 1 else "2º"
+        titulo_periodo = f"{sem_num} Semestre de {data_inicio.year}"
+        titulo_fluxo = f"Fluxo de Caixa - {sem_num} Semestre {data_inicio.year}"
+        altura_tabela = 800  # Semestre tem ~180 dias, precisa rolar
+    else:  # Anual
+        titulo_periodo = f"Ano de {data_inicio.year}"
+        titulo_fluxo = f"Fluxo de Caixa - {data_inicio.year} Completo"
+        altura_tabela = 800  # Ano tem 365 dias, precisa rolar
+
+    # Calcular número de dias do período
+    num_dias = (data_fim - data_inicio).days + 1
 
     # ========== CARDS DE RESUMO ==========
-    st.subheader(f"Resumo de {obter_nome_mes(mes_selecionado)} {ano_selecionado}")
+    st.subheader(f"Resumo - {titulo_periodo}")
+    st.caption(f"Período de {num_dias} dias: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
 
     col1, col2, col3 = st.columns(3)
 
@@ -310,7 +408,8 @@ def main():
         st.metric(
             label="Saldo Inicial",
             value=formatar_valor_br(saldo_inicial_total),
-            help="Saldo acumulado até o último dia do mês anterior"
+            delta=f"Disponível: {formatar_valor_br(saldo_ant_comum)}" if saldo_ant_comum > 0 else None,
+            help=f"Saldo acumulado até {(data_inicio - timedelta(days=1)).strftime('%d/%m/%Y')} (inclui Saldo Inicial das contas)"
         )
 
     with col2:
@@ -318,29 +417,47 @@ def main():
             label="Previsão Saldo Final",
             value=formatar_valor_br(saldo_final_total),
             delta=f"Disponível: {formatar_valor_br(saldo_final_comum)}",
-            help="Saldo projetado para o último dia do mês"
+            help=f"Saldo projetado para {data_fim.strftime('%d/%m/%Y')}"
         )
 
     with col3:
-        delta_resultado = "Superávit" if resultado_mes >= 0 else "Déficit"
+        delta_resultado = "Superávit" if resultado_periodo >= 0 else "Déficit"
         st.metric(
-            label="Resultado do Mês",
-            value=formatar_valor_br(resultado_mes),
+            label="Resultado do Período",
+            value=formatar_valor_br(resultado_periodo),
             delta=delta_resultado,
-            delta_color="normal" if resultado_mes >= 0 else "inverse",
-            help="Entradas - Saídas do mês"
+            delta_color="normal" if resultado_periodo >= 0 else "inverse",
+            help=f"Total de Entradas ({formatar_valor_br(total_entradas)}) - Saídas ({formatar_valor_br(total_saidas)})"
         )
+
+    # Mostrar informação sobre saldo inicial das contas
+    if contas and df.empty:
+        st.info("Os saldos acima são baseados nos **Saldos Iniciais** das suas contas cadastradas. Adicione transações para ver a movimentação diária.")
 
     st.markdown("---")
 
     # ========== TABELA DE FLUXO DE CAIXA ==========
-    st.subheader("Fluxo de Caixa Diário")
+    st.subheader(titulo_fluxo)
 
     # Preparar DataFrame para exibição
     df_display = df_fluxo.copy()
 
     # Guardar data original para estilização
     df_display['Data_Original'] = df_display['Data']
+
+    # ========== REORDENAR PARA COMEÇAR A PARTIR DE HOJE (Semestral/Anual) ==========
+    if modo_visualizacao in ["Semestral", "Anual"]:
+        # Verificar se o dia atual está dentro do período selecionado
+        if data_inicio <= data_hoje <= data_fim:
+            # Encontrar o índice do dia atual
+            idx_hoje = df_display[df_display['Data'].dt.date == data_hoje].index
+            if len(idx_hoje) > 0:
+                idx_hoje = idx_hoje[0]
+                # Reordenar: a partir de hoje até o fim + do início até ontem
+                df_display = pd.concat([
+                    df_display.loc[idx_hoje:],  # De hoje até o fim
+                    df_display.loc[:idx_hoje-1]  # Do início até ontem
+                ]).reset_index(drop=True)
 
     # Formatar valores para exibição
     df_display['Entradas_Fmt'] = df_display['Entradas'].apply(formatar_valor_br)
@@ -391,12 +508,12 @@ def main():
         if col in df_tabela_final.columns:
             styled_final = styled_final.applymap(estilizar_valores, subset=[col])
 
-    # Exibir tabela
+    # Exibir tabela com altura dinâmica baseada no modo de visualização
     st.dataframe(
         styled_final,
         use_container_width=True,
         hide_index=True,
-        height=600,
+        height=altura_tabela,
         column_config={
             "Data": st.column_config.TextColumn("📅 Data", width="medium"),
             "Entradas": st.column_config.TextColumn("💚 Entradas", width="small"),
@@ -431,4 +548,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

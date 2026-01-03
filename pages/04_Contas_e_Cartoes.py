@@ -19,6 +19,8 @@ from utils import (
     carregar_contas,
     salvar_conta,
     excluir_conta,
+    editar_conta,
+    obter_conta_por_id,
     carregar_cartoes,
     salvar_cartao,
     excluir_cartao,
@@ -148,6 +150,85 @@ st.markdown("""
 # DIALOGS (MODAIS)
 # ============================================================
 
+@st.dialog("✏️ Editar Conta", width="small")
+def modal_editar_conta(conta_id: int):
+    """Modal para editar uma conta bancária existente."""
+
+    conta = obter_conta_por_id(conta_id)
+    if not conta:
+        st.error("Conta não encontrada!")
+        return
+
+    st.markdown("### Editar Conta")
+
+    # Preview do banco
+    cor = conta['cor_hex']
+    logo = conta['logo_url']
+    banco_nome = conta['banco_nome']
+
+    if logo:
+        st.markdown(f"""
+        <div class="banco-preview" style="background-color: {cor}20; border: 2px solid {cor};">
+            <img src="{logo}" alt="{banco_nome}">
+            <span class="banco-preview-nome" style="color: {cor};">{banco_nome}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="banco-preview" style="background-color: {cor}20; border: 2px solid {cor};">
+            <div style="width: 50px; height: 50px; background: {cor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 1.2rem;">
+                {banco_nome[0]}
+            </div>
+            <span class="banco-preview-nome" style="color: {cor};">{banco_nome}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Inputs
+    novo_nome = st.text_input(
+        "Nome da Conta",
+        value=conta['nome'],
+        key="modal_edit_nome_conta"
+    )
+
+    # Tipo de Grupo da Conta
+    tipo_atual = conta.get('tipo_grupo', 'Disponível')
+    idx_tipo = TIPOS_GRUPO_CONTA.index(tipo_atual) if tipo_atual in TIPOS_GRUPO_CONTA else 0
+
+    novo_tipo_grupo = st.selectbox(
+        "Tipo de Conta",
+        options=TIPOS_GRUPO_CONTA,
+        index=idx_tipo,
+        key="modal_edit_tipo_grupo_conta",
+        help="**Disponível**: Conta bancária, dinheiro, investimentos. **Benefício**: Vale Refeição, Vale Alimentação, etc."
+    )
+
+    novo_saldo = st.number_input(
+        "Saldo Inicial (R$)",
+        min_value=0.0,
+        value=float(conta['saldo_inicial']),
+        step=0.01,
+        format="%.2f",
+        key="modal_edit_saldo_inicial"
+    )
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_edit_conta"):
+            st.rerun()
+
+    with col2:
+        if st.button("✅ Salvar", type="primary", use_container_width=True, key="btn_save_edit_conta"):
+            sucesso, msg = editar_conta(conta_id, novo_nome, novo_saldo, novo_tipo_grupo)
+            if sucesso:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
+
 @st.dialog("➕ Nova Conta Bancária", width="small")
 def modal_nova_conta():
     """Modal para adicionar nova conta bancária."""
@@ -192,7 +273,7 @@ def modal_nova_conta():
         key="modal_nome_conta"
     )
 
-    # Tipo de Grupo da Conta (NOVO CAMPO)
+    # Tipo de Grupo da Conta
     tipo_grupo = st.selectbox(
         "Tipo de Conta",
         options=TIPOS_GRUPO_CONTA,
@@ -350,13 +431,11 @@ def modal_novo_cartao():
 def renderizar_card_conta(conta: dict):
     """Renderiza um card de conta bancária."""
     cor = conta['cor_hex']
-    cor_sec = conta['cor_secundaria']
     logo = conta['logo_url']
     nome = conta['nome']
     banco_nome = conta['banco_nome']
     saldo = conta['saldo_inicial']
 
-    # Determinar cor do texto baseado na luminosidade da cor de fundo
     logo_html = f'<img src="{logo}" style="width: 40px; height: 40px; object-fit: contain;">' if logo else f'<div style="width: 40px; height: 40px; background: {cor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 1.2rem;">{banco_nome[0]}</div>'
 
     st.markdown(f"""
@@ -371,7 +450,7 @@ def renderizar_card_conta(conta: dict):
             </div>
             <div style="text-align: right;">
                 <div style="font-size: 0.75rem; color: #888; text-transform: uppercase;">Saldo Inicial</div>
-                <div style="font-weight: 700; font-size: 1.2rem; color: {cor};">{formatar_valor_br(saldo)}</div>
+                <div style="font-weight: 700, font-size: 1.2rem; color: {cor};">{formatar_valor_br(saldo)}</div>
             </div>
         </div>
     </div>
@@ -390,9 +469,7 @@ def renderizar_cartao_credito(cartao: dict):
     dia_fech = cartao['dia_fechamento']
     dia_venc = cartao['dia_vencimento']
 
-    # Gerar número fictício do cartão (últimos 4 dígitos baseado no ID)
     ultimos_digitos = str(cartao['id']).zfill(4)[-4:]
-
     logo_html = f'<img src="{logo}" class="cartao-logo">' if logo else ''
 
     st.markdown(f"""
@@ -412,7 +489,6 @@ def renderizar_cartao_credito(cartao: dict):
     </div>
     """, unsafe_allow_html=True)
 
-    # Info adicional abaixo do cartão
     st.markdown(f"""
     <div style="margin-top: 10px; padding: 10px 0;">
         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
@@ -437,7 +513,7 @@ def main():
     st.caption("Gerencie suas contas bancárias e cartões de crédito")
 
     # Criar abas
-    tab_contas, tab_cartoes = st.tabs(["Minhas Contas", "Meus Cartões"])
+    tab_contas, tab_cartoes = st.tabs(["🏦 Minhas Contas", "💳 Meus Cartões"])
 
     # ========== ABA: MINHAS CONTAS ==========
     with tab_contas:
@@ -468,14 +544,21 @@ def main():
                 with cols[idx % 2]:
                     conta_id = renderizar_card_conta(conta)
 
-                    # Botão de excluir
-                    if st.button("🗑️ Excluir", key=f"del_conta_{conta_id}", help="Excluir esta conta"):
-                        sucesso, msg = excluir_conta(conta_id)
-                        if sucesso:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
+                    # Botões de ação (Editar e Excluir) - lado a lado, compactos
+                    col_spacer, col_edit, col_del, col_spacer2 = st.columns([2, 1, 1, 2])
+
+                    with col_edit:
+                        if st.button("Editar", key=f"edit_conta_{conta_id}", help="Editar esta conta"):
+                            modal_editar_conta(conta_id)
+
+                    with col_del:
+                        if st.button("Excluir", key=f"del_conta_{conta_id}", help="Excluir esta conta"):
+                            sucesso, msg = excluir_conta(conta_id)
+                            if sucesso:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
 
                     st.markdown("<br>", unsafe_allow_html=True)
 

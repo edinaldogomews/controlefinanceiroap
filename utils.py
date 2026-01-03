@@ -1630,6 +1630,64 @@ def excluir_conta(conta_id: int) -> tuple:
         return False, f"Erro ao excluir conta: {str(e)}"
 
 
+def editar_conta(conta_id: int, nome: str = None, saldo_inicial: float = None, tipo_grupo: str = None) -> tuple:
+    """
+    Edita uma conta bancária existente.
+
+    Args:
+        conta_id: ID da conta a ser editada
+        nome: Novo nome da conta (opcional)
+        saldo_inicial: Novo saldo inicial (opcional)
+        tipo_grupo: Novo tipo de grupo (opcional)
+
+    Returns:
+        tuple: (sucesso: bool, mensagem: str)
+    """
+    try:
+        contas = carregar_contas()
+        conta_encontrada = False
+
+        for conta in contas:
+            if conta['id'] == conta_id:
+                conta_encontrada = True
+
+                # Atualizar apenas os campos fornecidos
+                if nome is not None and nome.strip():
+                    # Verificar duplicata de nome (exceto a própria conta)
+                    for outra in contas:
+                        if outra['id'] != conta_id and outra['nome'].lower() == nome.lower():
+                            return False, "Já existe outra conta com esse nome."
+                    conta['nome'] = nome.strip()
+
+                if saldo_inicial is not None:
+                    conta['saldo_inicial'] = saldo_inicial
+
+                if tipo_grupo is not None and tipo_grupo in TIPOS_GRUPO_CONTA:
+                    conta['tipo_grupo'] = tipo_grupo
+
+                break
+
+        if not conta_encontrada:
+            return False, "Conta não encontrada."
+
+        with open(CAMINHO_CONTAS, 'w', encoding='utf-8') as f:
+            json.dump(contas, f, ensure_ascii=False, indent=2)
+
+        return True, "Conta atualizada com sucesso!"
+
+    except Exception as e:
+        return False, f"Erro ao editar conta: {str(e)}"
+
+
+def obter_conta_por_id(conta_id: int) -> dict:
+    """Retorna uma conta pelo ID."""
+    contas = carregar_contas()
+    for conta in contas:
+        if conta['id'] == conta_id:
+            return conta
+    return None
+
+
 def carregar_cartoes() -> list:
     """Carrega lista de cartões de crédito do arquivo JSON."""
     try:
@@ -1876,7 +1934,7 @@ def calcular_saldos_dinamico(df: pd.DataFrame) -> dict:
 def calcular_saldo_anterior_dinamico(df: pd.DataFrame, tipo_grupo: str, data_inicio_mes) -> float:
     """
     Calcula o saldo acumulado de um grupo de contas (Disponível ou Benefício)
-    considerando TODAS as transações anteriores a uma data.
+    considerando SALDO INICIAL das contas + transações anteriores a uma data.
 
     Args:
         df: DataFrame com transações
@@ -1884,10 +1942,13 @@ def calcular_saldo_anterior_dinamico(df: pd.DataFrame, tipo_grupo: str, data_ini
         data_inicio_mes: Data limite (transações anteriores a esta data)
 
     Returns:
-        Saldo acumulado = Soma(Receitas) - Soma(Despesas)
+        Saldo = Soma(Saldos Iniciais) + Soma(Receitas anteriores) - Soma(Despesas anteriores)
     """
+    # Obter saldo inicial das contas do tipo especificado
+    saldo_inicial_total = obter_soma_saldos_iniciais_por_tipo(tipo_grupo)
+
     if df.empty:
-        return 0.0
+        return saldo_inicial_total
 
     # Obter lista de contas do tipo
     info_contas = obter_todas_contas_para_filtro()
@@ -1902,10 +1963,185 @@ def calcular_saldo_anterior_dinamico(df: pd.DataFrame, tipo_grupo: str, data_ini
     ].copy()
 
     if df_anterior.empty:
-        return 0.0
+        return saldo_inicial_total
 
     receitas = df_anterior[df_anterior['Tipo'] == 'Receita']['Valor'].sum()
     despesas = df_anterior[df_anterior['Tipo'] == 'Despesa']['Valor'].sum()
 
-    return receitas - despesas
+    return saldo_inicial_total + receitas - despesas
 
+
+# ============================================================
+# NOVAS FUNÇÕES: CÁLCULO DE SALDOS COM SALDO INICIAL (Cold Start)
+# ============================================================
+
+def obter_soma_saldos_iniciais_por_tipo(tipo_grupo: str) -> float:
+    """
+    Retorna a soma dos saldos iniciais de todas as contas de um tipo.
+
+    Args:
+        tipo_grupo: 'Disponível' ou 'Benefício'
+
+    Returns:
+        Soma dos saldos iniciais das contas do tipo especificado
+    """
+    contas = carregar_contas()
+    total = 0.0
+
+    for conta in contas:
+        if conta.get('tipo_grupo', 'Disponível') == tipo_grupo:
+            total += conta.get('saldo_inicial', 0.0)
+
+    return total
+
+
+def calcular_saldos_atuais() -> dict:
+    """
+    Calcula o saldo atual de TODAS as contas cadastradas.
+
+    Lógica para cada conta:
+        Saldo Atual = Saldo Inicial (do cadastro) + Total Entradas - Total Saídas
+
+    Returns:
+        dict com:
+            - 'contas': lista de dicts {'nome': str, 'saldo_atual': float, 'tipo_grupo': str, 'conta_info': dict}
+            - 'total_disponivel': float (soma saldos de contas Disponível)
+            - 'total_beneficio': float (soma saldos de contas Benefício)
+            - 'total_geral': float (soma de todos os saldos)
+    """
+    contas = carregar_contas()
+    df = carregar_dados()
+
+    resultado_contas = []
+    total_disponivel = 0.0
+    total_beneficio = 0.0
+
+    for conta in contas:
+        nome_conta = conta['nome']
+        saldo_inicial = conta.get('saldo_inicial', 0.0)
+        tipo_grupo = conta.get('tipo_grupo', 'Disponível')
+
+        # Calcular entradas e saídas dessa conta específica
+        if df.empty:
+            entradas = 0.0
+            saidas = 0.0
+        else:
+            df_conta = df[df['Conta'] == nome_conta]
+            entradas = df_conta[df_conta['Tipo'] == 'Receita']['Valor'].sum()
+            saidas = df_conta[df_conta['Tipo'] == 'Despesa']['Valor'].sum()
+
+        saldo_atual = saldo_inicial + entradas - saidas
+
+        resultado_contas.append({
+            'nome': nome_conta,
+            'saldo_atual': saldo_atual,
+            'tipo_grupo': tipo_grupo,
+            'saldo_inicial': saldo_inicial,
+            'entradas': entradas,
+            'saidas': saidas,
+            'conta_info': conta  # Dados completos da conta (cor, logo, etc.)
+        })
+
+        # Acumular por tipo
+        if tipo_grupo == 'Disponível':
+            total_disponivel += saldo_atual
+        else:
+            total_beneficio += saldo_atual
+
+    return {
+        'contas': resultado_contas,
+        'total_disponivel': total_disponivel,
+        'total_beneficio': total_beneficio,
+        'total_geral': total_disponivel + total_beneficio
+    }
+
+
+def obter_saldo_total_disponivel() -> float:
+    """
+    Retorna o saldo total de todas as contas do tipo 'Disponível'.
+    Considera Saldo Inicial + Transações.
+
+    Returns:
+        float: Saldo total disponível
+    """
+    saldos = calcular_saldos_atuais()
+    return saldos['total_disponivel']
+
+
+def obter_saldo_total_beneficios() -> float:
+    """
+    Retorna o saldo total de todas as contas do tipo 'Benefício' (VR, VA, etc).
+    Considera Saldo Inicial + Transações.
+
+    Returns:
+        float: Saldo total de benefícios
+    """
+    saldos = calcular_saldos_atuais()
+    return saldos['total_beneficio']
+
+
+def obter_saldo_conta(nome_conta: str) -> float:
+    """
+    Retorna o saldo atual de uma conta específica.
+
+    Args:
+        nome_conta: Nome da conta
+
+    Returns:
+        float: Saldo atual da conta (Saldo Inicial + Entradas - Saídas)
+    """
+    saldos = calcular_saldos_atuais()
+
+    for conta in saldos['contas']:
+        if conta['nome'] == nome_conta:
+            return conta['saldo_atual']
+
+    return 0.0
+
+
+def calcular_saldo_anterior_com_inicial(df: pd.DataFrame, tipo_grupo: str, data_inicio_mes) -> float:
+    """
+    Calcula o saldo acumulado até uma data específica, incluindo Saldo Inicial.
+
+    Nova lógica para Previsibilidade:
+        Saldo Anterior = Soma(Saldos Iniciais do tipo) + Soma(Transações anteriores ao mês)
+
+    Args:
+        df: DataFrame com transações
+        tipo_grupo: 'Disponível' ou 'Benefício'
+        data_inicio_mes: Data de início do mês (primeiro dia)
+
+    Returns:
+        float: Saldo acumulado até o dia anterior ao mês selecionado
+    """
+    # 1. Obter soma dos saldos iniciais das contas do tipo
+    saldo_inicial_total = obter_soma_saldos_iniciais_por_tipo(tipo_grupo)
+
+    # 2. Se não há transações, retorna apenas o saldo inicial
+    if df.empty:
+        return saldo_inicial_total
+
+    # 3. Obter lista de contas do tipo (incluindo legado)
+    info_contas = obter_todas_contas_para_filtro()
+    if tipo_grupo == 'Disponível':
+        lista_contas = info_contas['disponiveis']
+    else:
+        lista_contas = info_contas['beneficios']
+
+    # 4. Filtrar transações anteriores ao mês
+    df_temp = df.copy()
+    df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+
+    df_anterior = df_temp[
+        (df_temp['Conta'].isin(lista_contas)) &
+        (df_temp['Data'].dt.date < data_inicio_mes)
+    ]
+
+    if df_anterior.empty:
+        return saldo_inicial_total
+
+    # 5. Calcular receitas e despesas anteriores
+    receitas = df_anterior[df_anterior['Tipo'] == 'Receita']['Valor'].sum()
+    despesas = df_anterior[df_anterior['Tipo'] == 'Despesa']['Valor'].sum()
+
+    return saldo_inicial_total + receitas - despesas
