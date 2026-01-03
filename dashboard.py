@@ -34,7 +34,7 @@ from utils import (
 # ============================================================
 st.set_page_config(
     page_title="Somma - Controle Financeiro",
-    page_icon="💰",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -77,7 +77,7 @@ def main():
     exibir_status_conexao(armazenamento)
 
     # Título principal
-    st.title("💰 Dashboard Financeiro")
+    st.title("Visão Geral")
     st.markdown("---")
 
     # Carregar dados
@@ -85,8 +85,8 @@ def main():
 
     # Verificar se o DataFrame está vazio
     if df.empty:
-        st.warning("📭 Nenhum registro encontrado.")
-        st.info("👉 Acesse a página **📝 Registrar** no menu lateral para adicionar sua primeira transação!")
+        st.warning("Nenhum registro encontrado.")
+        st.info("Acesse a página **Registrar** no menu lateral para adicionar sua primeira transação!")
         exibir_rodape(auto_update.versao_local)
         st.stop()
 
@@ -181,7 +181,7 @@ def main():
     meses_formatados = [formatar_mes_ano_completo(m) for m in meses_unicos]
 
     # ========== SIDEBAR - FILTRO DE MÊS (VISÍVEL) ==========
-    st.sidebar.header("📅 Período")
+    st.sidebar.header("Período")
 
     if meses_formatados:
         opcoes_meses = ["Todos os meses"] + meses_formatados
@@ -210,7 +210,7 @@ def main():
         mes_selecionado_fmt = "Todos os meses"
 
     # ========== SIDEBAR - FILTROS AVANÇADOS (EXPANDER) ==========
-    with st.sidebar.expander("🔍 Filtros Avançados", expanded=False):
+    with st.sidebar.expander("Filtros Avançados", expanded=False):
         tipos_selecionados = st.multiselect(
             "Tipo de Transação",
             options=tipos_unicos,
@@ -238,7 +238,7 @@ def main():
         df_mes = df_filtrado.copy()
 
     # ========== KPIs - MÉTRICAS PRINCIPAIS ==========
-    st.subheader("📊 Resumo Financeiro")
+    st.subheader("Resumo Financeiro")
 
     # Calcular saldos usando função do utils
     saldos = calcular_saldos(df_filtrado)
@@ -255,19 +255,19 @@ def main():
 
     with col1:
         st.metric(
-            label=f"💵 Receitas{label_periodo}",
+            label=f"Receitas{label_periodo}",
             value=formatar_valor_br(totais_mes['total_receitas'])
         )
 
     with col2:
         st.metric(
-            label=f"💸 Despesas{label_periodo}",
+            label=f"Despesas{label_periodo}",
             value=formatar_valor_br(totais_mes['total_despesas'])
         )
 
     with col3:
         st.metric(
-            label="💰 Saldo Principal",
+            label="Saldo Principal",
             value=formatar_valor_br(saldos['saldo_comum']),
             delta=f"{'Positivo' if saldos['saldo_comum'] >= 0 else 'Negativo'}",
             help="Saldo acumulado da Conta Comum"
@@ -275,14 +275,14 @@ def main():
 
     with col4:
         st.metric(
-            label=f"📋 Transações{label_periodo}",
+            label=f"Transações{label_periodo}",
             value=len(df_mes)
         )
 
     if saldos['mostrar_card_vr']:
         with col5:
             st.metric(
-                label="🍽️ Saldo VR",
+                label="Saldo VR",
                 value=formatar_valor_br(saldos['saldo_vr']),
                 delta=f"{'Positivo' if saldos['saldo_vr'] >= 0 else 'Negativo'}",
                 help="Saldo acumulado do Vale Refeição"
@@ -291,12 +291,12 @@ def main():
     st.markdown("---")
 
     # ========== GRÁFICOS ==========
-    st.subheader("📈 Visualizações")
+    st.subheader("Visualizações")
 
     col_grafico1, col_grafico2 = st.columns(2)
 
     with col_grafico1:
-        st.markdown(f"#### 🍩 Gastos por Categoria{label_periodo}")
+        st.markdown(f"#### Gastos por Categoria{label_periodo}")
 
         if not df_mes.empty:
             gastos_categoria = df_mes.groupby('Categoria')['Valor'].sum().reset_index()
@@ -324,7 +324,7 @@ def main():
             st.info("Nenhum dado disponível para o período selecionado.")
 
     with col_grafico2:
-        st.markdown("#### 📅 Movimentação por Mês")
+        st.markdown("#### Movimentação por Mês")
 
         if not df_mes.empty:
             df_mensal = df_mes.copy()
@@ -354,7 +354,7 @@ def main():
         else:
             st.info("Nenhum dado disponível para o período selecionado.")
 
-    st.markdown(f"#### 📊 Receitas vs Despesas{label_periodo}")
+    st.markdown(f"#### Receitas vs Despesas{label_periodo}")
 
     if not df_mes.empty:
         comparativo = pd.DataFrame({

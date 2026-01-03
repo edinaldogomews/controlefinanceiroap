@@ -56,16 +56,17 @@ CAT_VALE_REFEICAO = [
 # Categorias de DESPESA
 CAT_DESPESA = [
     'Moradia',
-    'Vale Alimentação/Refeição',
+    'Alimentação',
+    'Supermercado',
     'Transporte',
     'Saúde',
     'Educação',
     'Lazer',
-    'Vestuário',
-    'Assinaturas',
+    'Roupa',
+    'Assinaturas/Serviços',
     'Impostos',
     'Seguros',
-    'Telefone/Internet',
+    'Internet',
     'Cartão de Crédito',
     'Empréstimos',
     'Outros (Despesa)'
@@ -164,33 +165,25 @@ CSS_GLOBAL = """
 """
 
 LOGO_SIDEBAR = """
-    <div style="text-align: center; padding: 30px 0;">
+    <div style="text-align: left; padding: 20px 5px;">
         <h1 style="
-            background: linear-gradient(135deg, #2E86AB 0%, #1a5276 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-size: 3.5rem;
-            font-weight: 800;
+            color: #333;
+            font-size: 1.8rem;
+            font-weight: 700;
             margin: 0;
-            letter-spacing: 3px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        ">💰 Somma</h1>
+            font-family: 'Segoe UI', sans-serif;
+            letter-spacing: -1px;
+        ">
+            Somma<span style="color: #2E86AB;">.</span>
+        </h1>
         <p style="
-            color: #555;
-            font-size: 1rem;
-            margin-top: 8px;
-            font-weight: 500;
-            letter-spacing: 1px;
+            color: #888;
+            font-size: 0.75rem;
+            margin-top: -5px;
+            font-weight: 400;
             text-transform: uppercase;
-        ">Controle Financeiro</p>
-        <div style="
-            width: 60px;
-            height: 3px;
-            background: linear-gradient(90deg, #2E86AB, #1a5276);
-            margin: 12px auto 0;
-            border-radius: 2px;
-        "></div>
+            letter-spacing: 2px;
+        ">Financeiro</p>
     </div>
 """
 
@@ -210,7 +203,6 @@ def exibir_rodape(versao_local: str = None):
     if versao_local is None:
         versao_local = ler_versao_local()
     st.sidebar.markdown("---")
-    st.sidebar.caption("Dashboard Financeiro Gratuito")
     st.sidebar.caption("Desenvolvido por Edinaldo Gomes")
     st.sidebar.caption("📧 edinaldosantos.contato@gmail.com")
     st.sidebar.caption(f"📦 Versão: {versao_local}")
