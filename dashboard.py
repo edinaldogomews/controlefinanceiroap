@@ -255,37 +255,55 @@ def main():
 
     with col1:
         st.metric(
-            label=f"Receitas{label_periodo}",
-            value=formatar_valor_br(totais_mes['total_receitas'])
-        )
-
-    with col2:
-        st.metric(
-            label=f"Despesas{label_periodo}",
-            value=formatar_valor_br(totais_mes['total_despesas'])
-        )
-
-    with col3:
-        st.metric(
             label="Saldo Principal",
             value=formatar_valor_br(saldos['saldo_comum']),
             delta=f"{'Positivo' if saldos['saldo_comum'] >= 0 else 'Negativo'}",
             help="Saldo acumulado da Conta Comum"
         )
 
-    with col4:
-        st.metric(
-            label=f"Transações{label_periodo}",
-            value=len(df_mes)
-        )
-
     if saldos['mostrar_card_vr']:
-        with col5:
+        with col2:
             st.metric(
                 label="Saldo VR",
                 value=formatar_valor_br(saldos['saldo_vr']),
                 delta=f"{'Positivo' if saldos['saldo_vr'] >= 0 else 'Negativo'}",
                 help="Saldo acumulado do Vale Refeição"
+            )
+
+        with col3:
+            st.metric(
+                label=f"Receitas{label_periodo}",
+                value=formatar_valor_br(totais_mes['total_receitas'])
+            )
+
+        with col4:
+            st.metric(
+                label=f"Transações{label_periodo}",
+                value=len(df_mes)
+            )
+
+        with col5:
+            st.metric(
+                label=f"Despesas{label_periodo}",
+                value=formatar_valor_br(totais_mes['total_despesas'])
+            )
+    else:
+        with col2:
+            st.metric(
+                label=f"Receitas{label_periodo}",
+                value=formatar_valor_br(totais_mes['total_receitas'])
+            )
+
+        with col3:
+            st.metric(
+                label=f"Transações{label_periodo}",
+                value=len(df_mes)
+            )
+
+        with col4:
+            st.metric(
+                label=f"Despesas{label_periodo}",
+                value=formatar_valor_br(totais_mes['total_despesas'])
             )
 
     st.markdown("---")

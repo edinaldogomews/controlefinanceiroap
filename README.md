@@ -80,7 +80,7 @@ Para sincronizar seus dados com o Google Sheets e acessá-los de qualquer lugar:
 
 ```
 controlefinanceiroap/
-├── dashboard.py              # Aplicação principal Streamlit
+├── Dashboard.py              # Aplicação principal Streamlit
 ├── dados_financeiros.csv     # Dados locais (modo offline)
 ├── credentials.json          # Credenciais Google (opcional)
 ├── requirements.txt          # Dependências do projeto

@@ -167,7 +167,7 @@ CSS_GLOBAL = """
 LOGO_SIDEBAR = """
     <div style="text-align: left; padding: 20px 5px;">
         <h1 style="
-            color: #333;
+            color: #FFFFFF;
             font-size: 1.8rem;
             font-weight: 700;
             margin: 0;
@@ -177,7 +177,7 @@ LOGO_SIDEBAR = """
             Somma<span style="color: #2E86AB;">.</span>
         </h1>
         <p style="
-            color: #888;
+            color: #CCCCCC;
             font-size: 0.75rem;
             margin-top: -5px;
             font-weight: 400;
@@ -203,10 +203,17 @@ def exibir_rodape(versao_local: str = None):
     if versao_local is None:
         versao_local = ler_versao_local()
     st.sidebar.markdown("---")
-    st.sidebar.caption("Desenvolvido por Edinaldo Gomes")
-    st.sidebar.caption("📧 edinaldosantos.contato@gmail.com")
-    st.sidebar.caption(f"📦 Versão: {versao_local}")
-    st.sidebar.caption("© 2025 Todos os direitos reservados")
+    st.sidebar.markdown(
+        f"""
+        <div style="font-size: 0.85rem; color: #888; line-height: 1.5;">
+            <p style="margin: 3px 0;">Desenvolvido por Edinaldo Gomes</p>
+            <p style="margin: 3px 0;">📧 edinaldosantos.contato@gmail.com</p>
+            <p style="margin: 3px 0;">📦 Versão: {versao_local}</p>
+            <p style="margin: 3px 0;">© 2025 Todos os direitos reservados</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 def exibir_status_conexao(armazenamento):
