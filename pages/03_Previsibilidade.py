@@ -1,6 +1,6 @@
 """
 Somma - Página de Previsibilidade
-Fluxo de Caixa com tabela de transações e saldos acumulados
+Fluxo de Caixa Diário (Ledger) - Visualização do saldo futuro projetado dia a dia
 """
 
 import streamlit as st
@@ -16,12 +16,7 @@ from utils import (
     exibir_menu_lateral,
     formatar_valor_br,
     get_armazenamento,
-    carregar_dados,
-    TIPOS_CONTA,
-    TIPOS_TRANSACAO,
-    CAT_DESPESA,
-    CAT_RECEITA,
-    CAT_VALE_REFEICAO
+    carregar_dados
 )
 
 # ============================================================
@@ -29,7 +24,7 @@ from utils import (
 # ============================================================
 st.set_page_config(
     page_title="Previsibilidade - Somma",
-    page_icon="📊",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -43,7 +38,7 @@ aplicar_estilo_global()
 # ============================================================
 
 def obter_nome_dia_semana(data: date) -> str:
-    """Retorna o nome do dia da semana em português."""
+    """Retorna o nome abreviado do dia da semana em português."""
     dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
     return dias[data.weekday()]
 
@@ -58,8 +53,12 @@ def obter_nome_mes(mes: int) -> str:
 def calcular_saldo_anterior(df: pd.DataFrame, conta: str, data_inicio_mes: date) -> float:
     """
     Calcula o saldo acumulado de uma conta específica
-    considerando transações ANTERIORES ao primeiro dia do mês.
+    considerando TODAS as transações anteriores ao primeiro dia do mês.
+    Saldo = Soma(Receitas) - Soma(Despesas)
     """
+    if df.empty:
+        return 0.0
+
     df_anterior = df[
         (df['Conta'] == conta) &
         (df['Data'].dt.date < data_inicio_mes)
@@ -74,21 +73,22 @@ def calcular_saldo_anterior(df: pd.DataFrame, conta: str, data_inicio_mes: date)
     return receitas - despesas
 
 
-def gerar_tabela_previsibilidade(df: pd.DataFrame, ano: int, mes: int) -> tuple:
+def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFrame:
     """
-    Gera a tabela de previsibilidade com todas as transações do mês e saldos acumulados.
-    Retorna um DataFrame com as transações e os saldos calculados linha a linha.
+    Gera o fluxo de caixa diário (ledger) com todos os dias do mês.
+    Retorna um DataFrame com: Data, Entradas, Saídas, Saldo Dia, Saldo Acum Comum, Saldo Acum VR
     """
     primeiro_dia = date(ano, mes, 1)
+    ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
 
-    # Preparar dados de transações
+    # Preparar dados
     df = df.copy()
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
     df = df.dropna(subset=['Data'])
 
     # Calcular saldos anteriores ao mês (para cada conta)
-    saldo_anterior_comum = calcular_saldo_anterior(df, 'Comum', primeiro_dia)
-    saldo_anterior_vr = calcular_saldo_anterior(df, 'Vale Refeição', primeiro_dia)
+    saldo_ant_comum = calcular_saldo_anterior(df, 'Comum', primeiro_dia)
+    saldo_ant_vr = calcular_saldo_anterior(df, 'Vale Refeição', primeiro_dia)
 
     # Filtrar transações do mês
     df_mes = df[
@@ -96,40 +96,166 @@ def gerar_tabela_previsibilidade(df: pd.DataFrame, ano: int, mes: int) -> tuple:
         (df['Data'].dt.month == mes)
     ].copy()
 
-    # Ordenar por data
-    df_mes = df_mes.sort_values('Data').reset_index(drop=True)
+    # Criar DataFrame com todos os dias do mês
+    dias_do_mes = pd.date_range(start=primeiro_dia, end=ultimo_dia, freq='D')
+    df_calendario = pd.DataFrame({'Data': dias_do_mes})
 
-    # Calcular saldo acumulado por transação
-    saldo_comum = saldo_anterior_comum
-    saldo_vr = saldo_anterior_vr
-    saldos_comum = []
-    saldos_vr = []
+    # Agrupar transações por dia e conta
+    # Entradas (Receitas)
+    entradas_comum = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'] == 'Comum')].groupby(
+        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
+    entradas_comum.columns = ['Data', 'Entradas_Comum']
 
-    for idx, row in df_mes.iterrows():
-        valor = row['Valor']
-        tipo = row['Tipo']
-        conta = row['Conta']
+    entradas_vr = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'] == 'Vale Refeição')].groupby(
+        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
+    entradas_vr.columns = ['Data', 'Entradas_VR']
 
-        # Calcular movimento (positivo para receita, negativo para despesa)
-        movimento = valor if tipo == 'Receita' else -valor
+    # Saídas (Despesas)
+    saidas_comum = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'] == 'Comum')].groupby(
+        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
+    saidas_comum.columns = ['Data', 'Saidas_Comum']
 
-        if conta == 'Vale Refeição':
-            saldo_vr += movimento
+    saidas_vr = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'] == 'Vale Refeição')].groupby(
+        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
+    saidas_vr.columns = ['Data', 'Saidas_VR']
+
+    # Converter Data do calendário para date (para merge)
+    df_calendario['Data_date'] = df_calendario['Data'].dt.date
+
+    # Fazer merge com o calendário
+    df_resultado = df_calendario.copy()
+
+    for df_temp, col in [(entradas_comum, 'Entradas_Comum'), (entradas_vr, 'Entradas_VR'),
+                          (saidas_comum, 'Saidas_Comum'), (saidas_vr, 'Saidas_VR')]:
+        if not df_temp.empty:
+            df_resultado = df_resultado.merge(df_temp, left_on='Data_date', right_on='Data',
+                                               how='left', suffixes=('', '_drop'))
+            # Remover coluna duplicada do merge
+            cols_drop = [c for c in df_resultado.columns if c.endswith('_drop') or c == 'Data_drop']
+            df_resultado = df_resultado.drop(columns=[c for c in cols_drop if c in df_resultado.columns], errors='ignore')
+            # Remover a coluna 'Data' que veio do merge (não a original)
+            if 'Data_y' in df_resultado.columns:
+                df_resultado = df_resultado.drop(columns=['Data_y'])
+                df_resultado = df_resultado.rename(columns={'Data_x': 'Data'})
         else:
-            saldo_comum += movimento
+            df_resultado[col] = 0.0
 
-        saldos_comum.append(saldo_comum)
-        saldos_vr.append(saldo_vr)
+    # Garantir que as colunas existem
+    for col in ['Entradas_Comum', 'Entradas_VR', 'Saidas_Comum', 'Saidas_VR']:
+        if col not in df_resultado.columns:
+            df_resultado[col] = 0.0
 
-    df_mes['Saldo_Comum'] = saldos_comum
-    df_mes['Saldo_VR'] = saldos_vr
+    # Preencher NaN com 0
+    df_resultado = df_resultado.fillna(0)
 
-    # Formatar data para exibição
-    df_mes['Dia_Semana'] = df_mes['Data'].apply(lambda x: obter_nome_dia_semana(x.date()))
-    df_mes['Data_Fmt'] = df_mes['Data'].dt.strftime('%d/%m')
-    df_mes['Data_Display'] = df_mes['Dia_Semana'] + ' ' + df_mes['Data_Fmt']
+    # Calcular totais do dia
+    df_resultado['Entradas'] = df_resultado['Entradas_Comum'] + df_resultado['Entradas_VR']
+    df_resultado['Saidas'] = df_resultado['Saidas_Comum'] + df_resultado['Saidas_VR']
+    df_resultado['Saldo_Dia'] = df_resultado['Entradas'] - df_resultado['Saidas']
 
-    return df_mes, saldo_anterior_comum, saldo_anterior_vr
+    # Calcular saldo do dia por conta
+    df_resultado['Saldo_Dia_Comum'] = df_resultado['Entradas_Comum'] - df_resultado['Saidas_Comum']
+    df_resultado['Saldo_Dia_VR'] = df_resultado['Entradas_VR'] - df_resultado['Saidas_VR']
+
+    # Calcular saldo acumulado (running total) por conta
+    df_resultado['Saldo_Acum_Comum'] = saldo_ant_comum + df_resultado['Saldo_Dia_Comum'].cumsum()
+    df_resultado['Saldo_Acum_VR'] = saldo_ant_vr + df_resultado['Saldo_Dia_VR'].cumsum()
+
+    # Formatar data para exibição (Dia da semana + Dia/Mês)
+    df_resultado['Dia_Semana'] = df_resultado['Data'].apply(lambda x: obter_nome_dia_semana(x.date()))
+    df_resultado['Data_Fmt'] = df_resultado['Data'].dt.strftime('%d/%m')
+    df_resultado['Data_Display'] = df_resultado['Dia_Semana'] + ' ' + df_resultado['Data_Fmt']
+
+    # Limpar colunas auxiliares
+    df_resultado = df_resultado.drop(columns=['Data_date'], errors='ignore')
+
+    return df_resultado, saldo_ant_comum, saldo_ant_vr
+
+
+def aplicar_estilos(df: pd.DataFrame, data_hoje: date) -> pd.io.formats.style.Styler:
+    """
+    Aplica estilos condicionais ao DataFrame:
+    - Linha de hoje: fundo azul claro
+    - Valores negativos: texto vermelho, fundo vermelho suave
+    - Valores positivos: texto verde
+    - Zeros: texto cinza
+    """
+    def estilizar_linha(row):
+        """Retorna estilos para cada célula da linha."""
+        estilos = [''] * len(row)
+
+        # Verificar se é a linha de hoje
+        if 'Data' in row.index and pd.notna(row['Data']):
+            try:
+                data_row = row['Data'].date() if hasattr(row['Data'], 'date') else row['Data']
+                if data_row == data_hoje:
+                    estilos = ['background-color: #e3f2fd; color: #1565c0; font-weight: bold'] * len(row)
+                    return estilos
+            except:
+                pass
+
+        return estilos
+
+    def estilizar_valor(val, coluna):
+        """Retorna estilo para valores numéricos."""
+        if pd.isna(val):
+            return ''
+
+        try:
+            valor = float(str(val).replace('R$', '').replace('.', '').replace(',', '.').strip())
+        except:
+            return ''
+
+        if valor < 0:
+            return 'color: #d32f2f; background-color: #ffebee'
+        elif valor > 0:
+            return 'color: #2e7d32'
+        else:
+            return 'color: #9e9e9e'
+
+    def aplicar_estilo_celula(val):
+        """Aplica estilo baseado no valor."""
+        if pd.isna(val):
+            return ''
+        try:
+            valor = float(str(val).replace('R$', '').replace('.', '').replace(',', '.').strip())
+            if valor < 0:
+                return 'color: #d32f2f; background-color: #ffebee'
+            elif valor > 0:
+                return 'color: #2e7d32'
+            else:
+                return 'color: #9e9e9e'
+        except:
+            return ''
+
+    # Colunas de valores para aplicar estilo
+    colunas_valor = ['Entradas', 'Saídas', 'Saldo Dia', 'Saldo Comum', 'Saldo VR']
+
+    # Criar styler
+    styler = df.style
+
+    # Aplicar estilo para linha de hoje
+    def highlight_hoje(row):
+        if 'Data_Original' in df.columns:
+            idx = row.name
+            try:
+                data_row = df.loc[idx, 'Data_Original']
+                if pd.notna(data_row):
+                    data_row = data_row.date() if hasattr(data_row, 'date') else data_row
+                    if data_row == data_hoje:
+                        return ['background-color: #e3f2fd; color: #1565c0; font-weight: bold'] * len(row)
+            except:
+                pass
+        return [''] * len(row)
+
+    styler = styler.apply(highlight_hoje, axis=1)
+
+    # Aplicar estilo para valores
+    for col in colunas_valor:
+        if col in df.columns:
+            styler = styler.applymap(aplicar_estilo_celula, subset=[col])
+
+    return styler
 
 
 # ============================================================
@@ -138,12 +264,10 @@ def gerar_tabela_previsibilidade(df: pd.DataFrame, ano: int, mes: int) -> tuple:
 def main():
     armazenamento = get_armazenamento()
     exibir_status_conexao(armazenamento)
-
-    # Botão global de Novo Lançamento na sidebar
     exibir_menu_lateral(armazenamento)
 
-    st.title("Previsibilidade")
-    st.caption("Fluxo de Caixa - Visualize transações e saldos acumulados dia a dia")
+    st.title("📊 Previsibilidade")
+    st.caption("Fluxo de Caixa Diário - Visualize seu saldo futuro projetado dia a dia")
 
     # Carregar dados
     df = carregar_dados()
@@ -152,9 +276,8 @@ def main():
     data_hoje = date.today()
 
     # ========== SIDEBAR - SELEÇÃO DE MÊS/ANO ==========
-    st.sidebar.header("Período")
+    st.sidebar.header("📅 Período")
 
-    # Opções de mês
     meses_opcoes = {
         'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4,
         'Maio': 5, 'Junho': 6, 'Julho': 7, 'Agosto': 8,
@@ -164,13 +287,13 @@ def main():
     col_mes, col_ano = st.sidebar.columns(2)
 
     with col_mes:
-        mes_selecionado_nome = st.selectbox(
+        mes_nome = st.selectbox(
             "Mês",
             options=list(meses_opcoes.keys()),
             index=data_hoje.month - 1,
             key="prev_mes"
         )
-        mes_selecionado = meses_opcoes[mes_selecionado_nome]
+        mes_selecionado = meses_opcoes[mes_nome]
 
     with col_ano:
         ano_atual = data_hoje.year
@@ -184,115 +307,154 @@ def main():
 
     # ========== VERIFICAR SE HÁ DADOS ==========
     if df.empty:
-        st.warning("Nenhuma transação encontrada.")
-        st.info("Acesse **Registrar** para adicionar transações!")
+        st.warning("⚠️ Nenhuma transação encontrada.")
+        st.info("💡 Acesse **Registrar** para adicionar suas primeiras transações!")
         exibir_rodape()
         st.stop()
 
-    # ========== GERAR TABELA DE PREVISIBILIDADE ==========
-    df_prev, saldo_ant_comum, saldo_ant_vr = gerar_tabela_previsibilidade(df, ano_selecionado, mes_selecionado)
+    # ========== GERAR FLUXO DE CAIXA ==========
+    df_fluxo, saldo_ant_comum, saldo_ant_vr = gerar_fluxo_caixa_diario(df, ano_selecionado, mes_selecionado)
 
-    # ========== CARDS DE SALDO ==========
-    st.subheader(f"Saldos em {obter_nome_mes(mes_selecionado)} {ano_selecionado}")
+    # Calcular métricas do resumo
+    saldo_inicial_total = saldo_ant_comum + saldo_ant_vr
 
-    # Calcular saldos finais
-    if not df_prev.empty:
-        saldo_final_comum = df_prev['Saldo_Comum'].iloc[-1]
-        saldo_final_vr = df_prev['Saldo_VR'].iloc[-1]
+    if not df_fluxo.empty:
+        saldo_final_comum = df_fluxo['Saldo_Acum_Comum'].iloc[-1]
+        saldo_final_vr = df_fluxo['Saldo_Acum_VR'].iloc[-1]
+        total_entradas = df_fluxo['Entradas'].sum()
+        total_saidas = df_fluxo['Saidas'].sum()
     else:
         saldo_final_comum = saldo_ant_comum
         saldo_final_vr = saldo_ant_vr
+        total_entradas = 0
+        total_saidas = 0
+
+    saldo_final_total = saldo_final_comum + saldo_final_vr
+    resultado_mes = total_entradas - total_saidas
+
+    # ========== CARDS DE RESUMO ==========
+    st.subheader(f"Resumo de {obter_nome_mes(mes_selecionado)} {ano_selecionado}")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric(
-            label="Saldo Anterior (Comum)",
-            value=formatar_valor_br(saldo_ant_comum),
-            help="Saldo acumulado antes do início do mês"
+            label="💰 Saldo Inicial",
+            value=formatar_valor_br(saldo_inicial_total),
+            help="Saldo acumulado até o último dia do mês anterior"
         )
 
     with col2:
         st.metric(
-            label="Saldo Anterior (VR)",
-            value=formatar_valor_br(saldo_ant_vr),
-            help="Saldo acumulado antes do início do mês"
+            label="📈 Previsão Saldo Final",
+            value=formatar_valor_br(saldo_final_total),
+            delta=f"Comum: {formatar_valor_br(saldo_final_comum)}",
+            help="Saldo projetado para o último dia do mês"
         )
 
     with col3:
+        delta_resultado = "Superávit" if resultado_mes >= 0 else "Déficit"
         st.metric(
-            label="Saldo Final Projetado",
-            value=formatar_valor_br(saldo_final_comum + saldo_final_vr),
-            delta=f"Comum: {formatar_valor_br(saldo_final_comum)}"
+            label="📊 Resultado do Mês",
+            value=formatar_valor_br(resultado_mes),
+            delta=delta_resultado,
+            delta_color="normal" if resultado_mes >= 0 else "inverse",
+            help="Entradas - Saídas do mês"
         )
 
     st.markdown("---")
 
-    # ========== RESUMO DO MÊS ==========
-    if not df_prev.empty:
-        total_receitas = df_prev[df_prev['Tipo'] == 'Receita']['Valor'].sum()
-        total_despesas = df_prev[df_prev['Tipo'] == 'Despesa']['Valor'].sum()
-    else:
-        total_receitas = 0
-        total_despesas = 0
+    # ========== TABELA DE FLUXO DE CAIXA ==========
+    st.subheader(f"📅 Fluxo de Caixa Diário")
 
-    saldo_mes = total_receitas - total_despesas
+    # Preparar DataFrame para exibição
+    df_display = df_fluxo.copy()
 
-    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+    # Guardar data original para estilização
+    df_display['Data_Original'] = df_display['Data']
 
-    with col_r1:
-        st.metric("Receitas do Mês", formatar_valor_br(total_receitas))
-    with col_r2:
-        st.metric("Despesas do Mês", formatar_valor_br(total_despesas))
-    with col_r3:
-        st.metric("Saldo do Mês", formatar_valor_br(saldo_mes),
-                  delta="Positivo" if saldo_mes >= 0 else "Negativo")
-    with col_r4:
-        st.metric("Transações", len(df_prev))
+    # Formatar valores para exibição
+    df_display['Entradas_Fmt'] = df_display['Entradas'].apply(formatar_valor_br)
+    df_display['Saidas_Fmt'] = df_display['Saidas'].apply(formatar_valor_br)
+    df_display['Saldo_Dia_Fmt'] = df_display['Saldo_Dia'].apply(formatar_valor_br)
+    df_display['Saldo_Acum_Comum_Fmt'] = df_display['Saldo_Acum_Comum'].apply(formatar_valor_br)
+    df_display['Saldo_Acum_VR_Fmt'] = df_display['Saldo_Acum_VR'].apply(formatar_valor_br)
 
-    st.markdown("---")
+    # Selecionar colunas para exibição
+    df_tabela = df_display[['Data_Display', 'Entradas_Fmt', 'Saidas_Fmt', 'Saldo_Dia_Fmt',
+                            'Saldo_Acum_Comum_Fmt', 'Saldo_Acum_VR_Fmt', 'Data_Original']].copy()
+    df_tabela.columns = ['Data', 'Entradas', 'Saídas', 'Saldo Dia', 'Saldo Comum', 'Saldo VR', 'Data_Original']
 
-    # ========== TABELA DE TRANSAÇÕES COM PREVISIBILIDADE ==========
-    st.subheader(f"Transações de {obter_nome_mes(mes_selecionado)} {ano_selecionado}")
+    # Aplicar estilos
+    styled_df = aplicar_estilos(df_tabela, data_hoje)
 
-    if df_prev.empty:
-        st.info("Nenhuma transação neste mês.")
-    else:
-        # Preparar DataFrame para exibição
-        df_display = df_prev.copy()
+    # Ocultar coluna auxiliar e exibir
+    df_tabela_final = df_tabela.drop(columns=['Data_Original'])
 
-        # Formatar valores
-        df_display['Valor_Fmt'] = df_display['Valor'].apply(formatar_valor_br)
-        df_display['Saldo_Comum_Fmt'] = df_display['Saldo_Comum'].apply(formatar_valor_br)
-        df_display['Saldo_VR_Fmt'] = df_display['Saldo_VR'].apply(formatar_valor_br)
+    # Aplicar estilos novamente no df final
+    def highlight_hoje_final(row):
+        idx = row.name
+        try:
+            data_row = df_tabela.loc[idx, 'Data_Original']
+            if pd.notna(data_row):
+                data_row = data_row.date() if hasattr(data_row, 'date') else data_row
+                if data_row == data_hoje:
+                    return ['background-color: #e3f2fd; color: #1565c0; font-weight: bold'] * len(row)
+        except:
+            pass
+        return [''] * len(row)
 
-        # Selecionar e renomear colunas
-        cols_exibir = ['Data_Display', 'Descricao', 'Categoria', 'Valor_Fmt', 'Tipo', 'Conta', 'Saldo_Comum_Fmt', 'Saldo_VR_Fmt']
-        df_tabela = df_display[cols_exibir].copy()
-        df_tabela.columns = ['Data', 'Descrição', 'Categoria', 'Valor', 'Tipo', 'Conta', 'Saldo Comum', 'Saldo VR']
+    def estilizar_valores(val):
+        if pd.isna(val) or not isinstance(val, str) or 'R$' not in val:
+            return ''
+        try:
+            valor = float(val.replace('R$', '').replace('.', '').replace(',', '.').strip())
+            if valor < 0:
+                return 'color: #d32f2f; background-color: #ffebee'
+            elif valor > 0:
+                return 'color: #2e7d32'
+            else:
+                return 'color: #9e9e9e'
+        except:
+            return ''
 
-        st.dataframe(
-            df_tabela,
-            use_container_width=True,
-            hide_index=True,
-            height=600,
-            column_config={
-                "Data": st.column_config.TextColumn("Data", width="medium"),
-                "Descrição": st.column_config.TextColumn("Descrição", width="large"),
-                "Categoria": st.column_config.TextColumn("Categoria", width="medium"),
-                "Valor": st.column_config.TextColumn("Valor", width="small"),
-                "Tipo": st.column_config.TextColumn("Tipo", width="small"),
-                "Conta": st.column_config.TextColumn("Conta", width="small"),
-                "Saldo Comum": st.column_config.TextColumn("Saldo Comum", width="medium"),
-                "Saldo VR": st.column_config.TextColumn("Saldo VR", width="medium"),
-            }
-        )
+    colunas_valor = ['Entradas', 'Saídas', 'Saldo Dia', 'Saldo Comum', 'Saldo VR']
+
+    styled_final = df_tabela_final.style.apply(highlight_hoje_final, axis=1)
+    for col in colunas_valor:
+        if col in df_tabela_final.columns:
+            styled_final = styled_final.applymap(estilizar_valores, subset=[col])
+
+    # Exibir tabela
+    st.dataframe(
+        styled_final,
+        use_container_width=True,
+        hide_index=True,
+        height=600,
+        column_config={
+            "Data": st.column_config.TextColumn("📅 Data", width="medium"),
+            "Entradas": st.column_config.TextColumn("💚 Entradas", width="small"),
+            "Saídas": st.column_config.TextColumn("❤️ Saídas", width="small"),
+            "Saldo Dia": st.column_config.TextColumn("📊 Saldo Dia", width="small"),
+            "Saldo Comum": st.column_config.TextColumn("🏦 Saldo Comum", width="medium"),
+            "Saldo VR": st.column_config.TextColumn("🍽️ Saldo VR", width="medium"),
+        }
+    )
 
     # ========== LEGENDA ==========
     st.markdown("""
-    <div style="display: flex; gap: 20px; margin-top: 10px; flex-wrap: wrap; font-family: sans-serif;">
+    <div style="display: flex; gap: 20px; margin-top: 15px; flex-wrap: wrap; font-family: sans-serif; font-size: 0.85rem;">
         <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 0.85rem; color: #555;">💡 A tabela exibe cada transação individualmente, atualizando o saldo acumulado linha a linha.</span>
+            <span style="background-color: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Hoje</span>
+            <span style="color: #555;">Dia atual destacado</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: #2e7d32; font-weight: bold;">Verde</span>
+            <span style="color: #555;">Valores positivos</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: #d32f2f; font-weight: bold;">Vermelho</span>
+            <span style="color: #555;">Valores negativos</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -303,3 +465,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
