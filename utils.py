@@ -161,6 +161,40 @@ CSS_GLOBAL = """
             margin-bottom: 10px;
             color: white;
         }
+
+        /* ===== BOTÃO FLUTUANTE (FAB) ===== */
+        .fab-container {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 9999;
+        }
+
+        .fab-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2E86AB 0%, #1a5276 100%);
+            border: none;
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(46, 134, 171, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fab-button:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 6px 20px rgba(46, 134, 171, 0.6);
+        }
+
+        .fab-button:active {
+            transform: scale(0.95);
+        }
     </style>
 """
 
@@ -196,6 +230,374 @@ def aplicar_estilo_global():
     st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
     st.sidebar.markdown(LOGO_SIDEBAR, unsafe_allow_html=True)
     st.sidebar.markdown("---")
+
+
+# ============================================================
+# MODAL DE GESTÃO GLOBAL (Novo Lançamento)
+# ============================================================
+@st.dialog("Gestão de Lançamentos", width="large")
+def modal_gestao(armazenamento):
+    """Modal global para adicionar, editar e excluir transações."""
+    from datetime import date
+
+    # Carregar dados
+    df = armazenamento.carregar_dados()
+
+    # Criar abas
+    aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "✏️ Editar", "🗑️ Excluir"])
+
+    # ========== ABA 1: NOVA TRANSAÇÃO ==========
+    with aba_nova:
+        st.subheader("Nova Transação")
+
+        with st.form(key="form_modal_nova", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                nova_conta = st.selectbox(
+                    "Conta",
+                    options=TIPOS_CONTA,
+                    key="modal_conta"
+                )
+
+            with col2:
+                novo_tipo = st.selectbox(
+                    "Tipo",
+                    options=TIPOS_TRANSACAO,
+                    key="modal_tipo"
+                )
+
+            col3, col4 = st.columns(2)
+
+            with col3:
+                nova_data = st.date_input(
+                    "Data",
+                    value=date.today(),
+                    format="DD/MM/YYYY",
+                    key="modal_data"
+                )
+
+            with col4:
+                novo_valor = st.number_input(
+                    "Valor (R$)",
+                    min_value=0.01,
+                    value=None,
+                    step=0.01,
+                    format="%.2f",
+                    placeholder="0.00",
+                    key="modal_valor"
+                )
+
+            # Categorias baseadas no tipo e conta
+            if nova_conta == "Vale Refeição" and novo_tipo == "Despesa":
+                categorias = CAT_VALE_REFEICAO
+            elif novo_tipo == "Receita":
+                categorias = CAT_RECEITA
+            else:
+                categorias = CAT_DESPESA
+
+            nova_categoria = st.selectbox(
+                "Categoria",
+                options=categorias,
+                key="modal_categoria"
+            )
+
+            nova_descricao = st.text_input(
+                "Descrição",
+                placeholder="Ex: Salário, Conta de Luz, etc.",
+                key="modal_descricao"
+            )
+
+            submit_nova = st.form_submit_button(
+                "💾 Salvar",
+                use_container_width=True,
+                type="primary"
+            )
+
+            if submit_nova:
+                if not nova_descricao.strip():
+                    st.error("A descrição é obrigatória!")
+                elif novo_valor is None or novo_valor <= 0:
+                    st.error("O valor deve ser maior que zero!")
+                else:
+                    conta_salvar = "Vale Refeição" if nova_conta == "Vale Refeição" else "Comum"
+
+                    sucesso, mensagem = armazenamento.salvar_transacao(
+                        nova_data,
+                        nova_descricao.strip(),
+                        nova_categoria,
+                        novo_valor,
+                        novo_tipo,
+                        conta_salvar
+                    )
+
+                    if sucesso:
+                        st.success(f"✅ {mensagem}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {mensagem}")
+
+    # ========== ABA 2: EDITAR TRANSAÇÃO ==========
+    with aba_editar:
+        st.subheader("Editar Transação")
+
+        if df.empty:
+            st.info("Nenhuma transação para editar.")
+        else:
+            # Pegar últimas 10 transações (mais recentes)
+            df_edit = df.copy()
+            df_edit['Data'] = pd.to_datetime(df_edit['Data'], errors='coerce')
+            df_edit = df_edit.sort_values('Data', ascending=False).head(10).reset_index(drop=True)
+
+            # Selecionar transação
+            opcoes_edit = []
+            for idx, row in df_edit.iterrows():
+                data_fmt = row['Data'].strftime('%d/%m') if pd.notna(row['Data']) else '—'
+                valor_fmt = formatar_valor_br(row['Valor'])
+                desc = str(row['Descricao'])[:25]
+                emoji = "🟢" if row['Tipo'] == 'Receita' else "🔴"
+                opcoes_edit.append(f"{emoji} {data_fmt} | {desc} | {valor_fmt}")
+
+            idx_selecionado = st.selectbox(
+                "Selecione a transação:",
+                options=range(len(opcoes_edit)),
+                format_func=lambda x: opcoes_edit[x],
+                key="modal_edit_select"
+            )
+
+            if idx_selecionado is not None:
+                row_edit = df_edit.iloc[idx_selecionado]
+
+                # Encontrar índice original no DataFrame completo
+                df_original = df.reset_index(drop=True)
+                idx_original = df_original[
+                    (df_original['Descricao'] == row_edit['Descricao']) &
+                    (df_original['Valor'] == row_edit['Valor'])
+                ].index
+                idx_original = idx_original[0] if len(idx_original) > 0 else 0
+
+                with st.form(key="form_modal_editar"):
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        data_valor = row_edit['Data'].date() if pd.notna(row_edit['Data']) else date.today()
+                        edit_data = st.date_input("Data", value=data_valor, format="DD/MM/YYYY")
+
+                    with col2:
+                        edit_valor = st.number_input(
+                            "Valor",
+                            min_value=0.01,
+                            value=float(row_edit['Valor']),
+                            step=0.01,
+                            format="%.2f"
+                        )
+
+                    edit_descricao = st.text_input("Descrição", value=str(row_edit['Descricao']))
+
+                    col3, col4 = st.columns(2)
+
+                    with col3:
+                        tipo_atual = str(row_edit['Tipo'])
+                        idx_tipo = TIPOS_TRANSACAO.index(tipo_atual) if tipo_atual in TIPOS_TRANSACAO else 0
+                        edit_tipo = st.selectbox("Tipo", options=TIPOS_TRANSACAO, index=idx_tipo)
+
+                    with col4:
+                        conta_atual = str(row_edit['Conta'])
+                        conta_display = 'Conta Comum' if conta_atual == 'Comum' else conta_atual
+                        idx_conta = TIPOS_CONTA.index(conta_display) if conta_display in TIPOS_CONTA else 0
+                        edit_conta = st.selectbox("Conta", options=TIPOS_CONTA, index=idx_conta)
+
+                    # Categoria
+                    if edit_conta == "Vale Refeição" and edit_tipo == "Despesa":
+                        cats_edit = CAT_VALE_REFEICAO
+                    elif edit_tipo == "Receita":
+                        cats_edit = CAT_RECEITA
+                    else:
+                        cats_edit = CAT_DESPESA
+
+                    cat_atual = str(row_edit['Categoria'])
+                    if cat_atual not in cats_edit:
+                        cats_edit = cats_edit + [cat_atual]
+                    idx_cat = cats_edit.index(cat_atual) if cat_atual in cats_edit else 0
+                    edit_categoria = st.selectbox("Categoria", options=cats_edit, index=idx_cat)
+
+                    submit_edit = st.form_submit_button(
+                        "💾 Salvar Alterações",
+                        use_container_width=True,
+                        type="primary"
+                    )
+
+                    if submit_edit:
+                        if not edit_descricao.strip():
+                            st.error("A descrição é obrigatória!")
+                        elif edit_valor <= 0:
+                            st.error("O valor deve ser maior que zero!")
+                        else:
+                            conta_salvar = "Vale Refeição" if edit_conta == "Vale Refeição" else "Comum"
+
+                            sucesso, mensagem = armazenamento.editar_transacao(
+                                idx_original,
+                                edit_data,
+                                edit_descricao.strip(),
+                                edit_categoria,
+                                edit_valor,
+                                edit_tipo,
+                                conta_salvar
+                            )
+
+                            if sucesso:
+                                st.success(f"✅ {mensagem}")
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {mensagem}")
+
+    # ========== ABA 3: EXCLUIR TRANSAÇÃO ==========
+    with aba_excluir:
+        st.subheader("Excluir Transação")
+
+        if df.empty:
+            st.info("Nenhuma transação para excluir.")
+        else:
+            # Pegar últimas 10 transações
+            df_del = df.copy()
+            df_del['Data'] = pd.to_datetime(df_del['Data'], errors='coerce')
+            df_del = df_del.sort_values('Data', ascending=False).head(10).reset_index(drop=True)
+
+            st.caption("Clique no botão 🗑️ para excluir a transação.")
+
+            for idx, row in df_del.iterrows():
+                # Encontrar índice original
+                df_original = df.reset_index(drop=True)
+                idx_original = df_original[
+                    (df_original['Descricao'] == row['Descricao']) &
+                    (df_original['Valor'] == row['Valor'])
+                ].index
+                idx_original = idx_original[0] if len(idx_original) > 0 else 0
+
+                data_fmt = row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else '—'
+                valor_fmt = formatar_valor_br(row['Valor'])
+                desc = str(row['Descricao'])[:20]
+                emoji = "🟢" if row['Tipo'] == 'Receita' else "🔴"
+
+                col1, col2 = st.columns([5, 1])
+
+                with col1:
+                    st.markdown(f"**{emoji} {data_fmt}** | {desc} | {valor_fmt}")
+
+                with col2:
+                    if st.button("🗑️", key=f"del_{idx}_{idx_original}", help="Excluir"):
+                        sucesso, mensagem = armazenamento.excluir_transacao(idx_original)
+                        if sucesso:
+                            st.success("Excluído!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error(mensagem)
+
+                st.divider()
+
+
+def exibir_botao_novo_lancamento(armazenamento):
+    """Exibe o botão flutuante de Novo Lançamento no canto inferior direito."""
+
+    # Inicializar estado do modal se não existir
+    if 'show_novo_lancamento_modal' not in st.session_state:
+        st.session_state['show_novo_lancamento_modal'] = False
+
+    # Verificar query params (para o clique do botão flutuante)
+    query_params = st.query_params
+    if query_params.get("fab_click") == "1":
+        st.query_params.clear()
+        st.session_state['show_novo_lancamento_modal'] = True
+        st.rerun()
+
+    # Verificar se deve abrir o modal
+    if st.session_state.get('show_novo_lancamento_modal', False):
+        st.session_state['show_novo_lancamento_modal'] = False
+        modal_gestao(armazenamento)
+
+    # Injetar CSS e HTML para criar o botão flutuante
+    st.markdown("""
+        <style>
+        /* ===== BOTÃO FLUTUANTE FAB - NOVO LANÇAMENTO ===== */
+
+        /* Container do botão - posição fixa */
+        #fab-novo-lancamento-container {
+            position: fixed !important;
+            bottom: 40px !important;
+            right: 40px !important;
+            z-index: 999999 !important;
+            pointer-events: auto !important;
+        }
+
+        /* Estilo do botão circular */
+        #fab-novo-lancamento {
+            width: 70px !important;
+            height: 70px !important;
+            border-radius: 50% !important;
+            background: linear-gradient(135deg, #2E86AB 0%, #1a5276 100%) !important;
+            border: none !important;
+            color: white !important;
+            font-size: 36px !important;
+            font-weight: 300 !important;
+            cursor: pointer !important;
+            box-shadow: 0 6px 25px rgba(46, 134, 171, 0.7) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            text-decoration: none !important;
+            line-height: 1 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            outline: none !important;
+        }
+
+        #fab-novo-lancamento:hover {
+            transform: scale(1.15) rotate(90deg) !important;
+            box-shadow: 0 10px 35px rgba(46, 134, 171, 0.9) !important;
+            background: linear-gradient(135deg, #3498db 0%, #2E86AB 100%) !important;
+        }
+
+        #fab-novo-lancamento:active {
+            transform: scale(0.95) !important;
+        }
+
+        /* Tooltip customizado */
+        #fab-novo-lancamento::after {
+            content: 'Novo Lançamento';
+            position: absolute;
+            right: 85px;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: normal;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        #fab-novo-lancamento:hover::after {
+            opacity: 1;
+        }
+        </style>
+
+        <div id="fab-novo-lancamento-container">
+            <a href="?fab_click=1" id="fab-novo-lancamento" title="Novo Lançamento" target="_self">
+                +
+            </a>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def exibir_menu_lateral(armazenamento):
+    """Exibe o menu lateral completo com botão de ação global flutuante."""
+    exibir_botao_novo_lancamento(armazenamento)
 
 
 def exibir_rodape(versao_local: str = None):
@@ -698,7 +1100,9 @@ class ArmazenamentoHibrido:
         df = df[[col for col in COLUNAS_SISTEMA if col in df.columns]]
         df = df.dropna(how='all')
         df['Valor'] = df['Valor'].apply(self._limpar_valor)
-        df['Data'] = pd.to_datetime(df['Data'], errors='coerce', dayfirst=True)
+
+        # Converter data - primeiro tenta formato ISO (YYYY-MM-DD), depois outros formatos
+        df['Data'] = pd.to_datetime(df['Data'], errors='coerce', format='mixed', dayfirst=False)
         df['Descricao'] = df['Descricao'].fillna('').astype(str)
         df['Categoria'] = df['Categoria'].fillna('Outros').replace('', 'Outros')
         df['Tipo'] = df['Tipo'].fillna('Despesa').replace('', 'Despesa')
@@ -836,8 +1240,11 @@ class ArmazenamentoHibrido:
             else:
                 df = self._criar_df_vazio()
 
+            # Formatar data explicitamente no formato ISO (YYYY-MM-DD) para evitar inversão dia/mês
+            data_formatada = data.strftime('%Y-%m-%d') if hasattr(data, 'strftime') else str(data)
+
             nova_linha = pd.DataFrame([{
-                'Data': data,
+                'Data': pd.to_datetime(data_formatada),
                 'Descricao': descricao,
                 'Categoria': categoria,
                 'Valor': valor,

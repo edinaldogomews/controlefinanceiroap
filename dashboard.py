@@ -13,6 +13,7 @@ from utils import (
     aplicar_estilo_global,
     exibir_rodape,
     exibir_status_conexao,
+    exibir_menu_lateral,
     formatar_valor_br,
     formatar_mes_ano_completo,
     formatar_mes_curto,
@@ -75,6 +76,9 @@ def main():
 
     # ========== INDICADOR DE CONEXÃO NO TOPO ==========
     exibir_status_conexao(armazenamento)
+
+    # ========== BOTÃO FLUTUANTE DE NOVO LANÇAMENTO ==========
+    exibir_menu_lateral(armazenamento)
 
     # Título principal
     st.title("Visão Geral")
