@@ -16,7 +16,10 @@ from utils import (
     exibir_menu_lateral,
     formatar_valor_br,
     get_armazenamento,
-    carregar_dados
+    carregar_dados,
+    # Novas funções para contas dinâmicas
+    obter_todas_contas_para_filtro,
+    calcular_saldo_anterior_dinamico
 )
 
 # ============================================================
@@ -24,7 +27,7 @@ from utils import (
 # ============================================================
 st.set_page_config(
     page_title="Previsibilidade - Somma",
-    page_icon="",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -50,33 +53,12 @@ def obter_nome_mes(mes: int) -> str:
     return meses[mes]
 
 
-def calcular_saldo_anterior(df: pd.DataFrame, conta: str, data_inicio_mes: date) -> float:
-    """
-    Calcula o saldo acumulado de uma conta específica
-    considerando TODAS as transações anteriores ao primeiro dia do mês.
-    Saldo = Soma(Receitas) - Soma(Despesas)
-    """
-    if df.empty:
-        return 0.0
-
-    df_anterior = df[
-        (df['Conta'] == conta) &
-        (df['Data'].dt.date < data_inicio_mes)
-    ].copy()
-
-    if df_anterior.empty:
-        return 0.0
-
-    receitas = df_anterior[df_anterior['Tipo'] == 'Receita']['Valor'].sum()
-    despesas = df_anterior[df_anterior['Tipo'] == 'Despesa']['Valor'].sum()
-
-    return receitas - despesas
-
-
 def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFrame:
     """
     Gera o fluxo de caixa diário (ledger) com todos os dias do mês.
-    Retorna um DataFrame com: Data, Entradas, Saídas, Saldo Dia, Saldo Acum Comum, Saldo Acum VR
+    Usa sistema dinâmico de contas (Disponível vs Benefício).
+
+    Retorna um DataFrame com: Data, Entradas, Saídas, Saldo Dia, Saldo Acum Disponível, Saldo Acum Benefício
     """
     primeiro_dia = date(ano, mes, 1)
     ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
@@ -86,9 +68,14 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
     df = df.dropna(subset=['Data'])
 
-    # Calcular saldos anteriores ao mês (para cada conta)
-    saldo_ant_comum = calcular_saldo_anterior(df, 'Comum', primeiro_dia)
-    saldo_ant_vr = calcular_saldo_anterior(df, 'Vale Refeição', primeiro_dia)
+    # Obter listas de contas por tipo (dinâmico)
+    info_contas = obter_todas_contas_para_filtro()
+    contas_disponiveis = info_contas['disponiveis']  # Inclui 'Comum' + contas cadastradas tipo Disponível
+    contas_beneficio = info_contas['beneficios']      # Inclui 'Vale Refeição' + contas cadastradas tipo Benefício
+
+    # Calcular saldos anteriores ao mês usando listas dinâmicas
+    saldo_ant_disponivel = calcular_saldo_anterior_dinamico(df, 'Disponível', primeiro_dia)
+    saldo_ant_beneficio = calcular_saldo_anterior_dinamico(df, 'Benefício', primeiro_dia)
 
     # Filtrar transações do mês
     df_mes = df[
@@ -100,24 +87,38 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     dias_do_mes = pd.date_range(start=primeiro_dia, end=ultimo_dia, freq='D')
     df_calendario = pd.DataFrame({'Data': dias_do_mes})
 
-    # Agrupar transações por dia e conta
-    # Entradas (Receitas)
-    entradas_comum = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'] == 'Comum')].groupby(
-        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
-    entradas_comum.columns = ['Data', 'Entradas_Comum']
+    # Agrupar transações por dia e tipo de conta (usando listas dinâmicas)
+    # Entradas (Receitas) - Contas Disponíveis
+    df_receitas_disp = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'].isin(contas_disponiveis))]
+    if not df_receitas_disp.empty:
+        entradas_disp = df_receitas_disp.groupby(df_receitas_disp['Data'].dt.date)['Valor'].sum().reset_index()
+        entradas_disp.columns = ['Data', 'Entradas_Disponivel']
+    else:
+        entradas_disp = pd.DataFrame(columns=['Data', 'Entradas_Disponivel'])
 
-    entradas_vr = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'] == 'Vale Refeição')].groupby(
-        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
-    entradas_vr.columns = ['Data', 'Entradas_VR']
+    # Entradas (Receitas) - Contas Benefício
+    df_receitas_benef = df_mes[(df_mes['Tipo'] == 'Receita') & (df_mes['Conta'].isin(contas_beneficio))]
+    if not df_receitas_benef.empty:
+        entradas_benef = df_receitas_benef.groupby(df_receitas_benef['Data'].dt.date)['Valor'].sum().reset_index()
+        entradas_benef.columns = ['Data', 'Entradas_Beneficio']
+    else:
+        entradas_benef = pd.DataFrame(columns=['Data', 'Entradas_Beneficio'])
 
-    # Saídas (Despesas)
-    saidas_comum = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'] == 'Comum')].groupby(
-        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
-    saidas_comum.columns = ['Data', 'Saidas_Comum']
+    # Saídas (Despesas) - Contas Disponíveis
+    df_despesas_disp = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'].isin(contas_disponiveis))]
+    if not df_despesas_disp.empty:
+        saidas_disp = df_despesas_disp.groupby(df_despesas_disp['Data'].dt.date)['Valor'].sum().reset_index()
+        saidas_disp.columns = ['Data', 'Saidas_Disponivel']
+    else:
+        saidas_disp = pd.DataFrame(columns=['Data', 'Saidas_Disponivel'])
 
-    saidas_vr = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'] == 'Vale Refeição')].groupby(
-        df_mes['Data'].dt.date)['Valor'].sum().reset_index()
-    saidas_vr.columns = ['Data', 'Saidas_VR']
+    # Saídas (Despesas) - Contas Benefício
+    df_despesas_benef = df_mes[(df_mes['Tipo'] == 'Despesa') & (df_mes['Conta'].isin(contas_beneficio))]
+    if not df_despesas_benef.empty:
+        saidas_benef = df_despesas_benef.groupby(df_despesas_benef['Data'].dt.date)['Valor'].sum().reset_index()
+        saidas_benef.columns = ['Data', 'Saidas_Beneficio']
+    else:
+        saidas_benef = pd.DataFrame(columns=['Data', 'Saidas_Beneficio'])
 
     # Converter Data do calendário para date (para merge)
     df_calendario['Data_date'] = df_calendario['Data'].dt.date
@@ -125,8 +126,8 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     # Fazer merge com o calendário
     df_resultado = df_calendario.copy()
 
-    for df_temp, col in [(entradas_comum, 'Entradas_Comum'), (entradas_vr, 'Entradas_VR'),
-                          (saidas_comum, 'Saidas_Comum'), (saidas_vr, 'Saidas_VR')]:
+    for df_temp, col in [(entradas_disp, 'Entradas_Disponivel'), (entradas_benef, 'Entradas_Beneficio'),
+                          (saidas_disp, 'Saidas_Disponivel'), (saidas_benef, 'Saidas_Beneficio')]:
         if not df_temp.empty:
             df_resultado = df_resultado.merge(df_temp, left_on='Data_date', right_on='Data',
                                                how='left', suffixes=('', '_drop'))
@@ -141,7 +142,7 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
             df_resultado[col] = 0.0
 
     # Garantir que as colunas existem
-    for col in ['Entradas_Comum', 'Entradas_VR', 'Saidas_Comum', 'Saidas_VR']:
+    for col in ['Entradas_Disponivel', 'Entradas_Beneficio', 'Saidas_Disponivel', 'Saidas_Beneficio']:
         if col not in df_resultado.columns:
             df_resultado[col] = 0.0
 
@@ -149,17 +150,17 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     df_resultado = df_resultado.fillna(0)
 
     # Calcular totais do dia
-    df_resultado['Entradas'] = df_resultado['Entradas_Comum'] + df_resultado['Entradas_VR']
-    df_resultado['Saidas'] = df_resultado['Saidas_Comum'] + df_resultado['Saidas_VR']
+    df_resultado['Entradas'] = df_resultado['Entradas_Disponivel'] + df_resultado['Entradas_Beneficio']
+    df_resultado['Saidas'] = df_resultado['Saidas_Disponivel'] + df_resultado['Saidas_Beneficio']
     df_resultado['Saldo_Dia'] = df_resultado['Entradas'] - df_resultado['Saidas']
 
-    # Calcular saldo do dia por conta
-    df_resultado['Saldo_Dia_Comum'] = df_resultado['Entradas_Comum'] - df_resultado['Saidas_Comum']
-    df_resultado['Saldo_Dia_VR'] = df_resultado['Entradas_VR'] - df_resultado['Saidas_VR']
+    # Calcular saldo do dia por tipo de conta
+    df_resultado['Saldo_Dia_Disponivel'] = df_resultado['Entradas_Disponivel'] - df_resultado['Saidas_Disponivel']
+    df_resultado['Saldo_Dia_Beneficio'] = df_resultado['Entradas_Beneficio'] - df_resultado['Saidas_Beneficio']
 
-    # Calcular saldo acumulado (running total) por conta
-    df_resultado['Saldo_Acum_Comum'] = saldo_ant_comum + df_resultado['Saldo_Dia_Comum'].cumsum()
-    df_resultado['Saldo_Acum_VR'] = saldo_ant_vr + df_resultado['Saldo_Dia_VR'].cumsum()
+    # Calcular saldo acumulado (running total) por tipo de conta
+    df_resultado['Saldo_Acum_Comum'] = saldo_ant_disponivel + df_resultado['Saldo_Dia_Disponivel'].cumsum()
+    df_resultado['Saldo_Acum_VR'] = saldo_ant_beneficio + df_resultado['Saldo_Dia_Beneficio'].cumsum()
 
     # Formatar data para exibição (Dia da semana + Dia/Mês)
     df_resultado['Dia_Semana'] = df_resultado['Data'].apply(lambda x: obter_nome_dia_semana(x.date()))
@@ -169,7 +170,8 @@ def gerar_fluxo_caixa_diario(df: pd.DataFrame, ano: int, mes: int) -> pd.DataFra
     # Limpar colunas auxiliares
     df_resultado = df_resultado.drop(columns=['Data_date'], errors='ignore')
 
-    return df_resultado, saldo_ant_comum, saldo_ant_vr
+    # Retornar com nomes compatíveis (saldo_ant_comum e saldo_ant_vr para compatibilidade)
+    return df_resultado, saldo_ant_disponivel, saldo_ant_beneficio
 
 
 def aplicar_estilos(df: pd.DataFrame, data_hoje: date) -> pd.io.formats.style.Styler:
@@ -180,39 +182,6 @@ def aplicar_estilos(df: pd.DataFrame, data_hoje: date) -> pd.io.formats.style.St
     - Valores positivos: texto verde
     - Zeros: texto cinza
     """
-    def estilizar_linha(row):
-        """Retorna estilos para cada célula da linha."""
-        estilos = [''] * len(row)
-
-        # Verificar se é a linha de hoje
-        if 'Data' in row.index and pd.notna(row['Data']):
-            try:
-                data_row = row['Data'].date() if hasattr(row['Data'], 'date') else row['Data']
-                if data_row == data_hoje:
-                    estilos = ['background-color: #e3f2fd; color: #1565c0; font-weight: bold'] * len(row)
-                    return estilos
-            except:
-                pass
-
-        return estilos
-
-    def estilizar_valor(val, coluna):
-        """Retorna estilo para valores numéricos."""
-        if pd.isna(val):
-            return ''
-
-        try:
-            valor = float(str(val).replace('R$', '').replace('.', '').replace(',', '.').strip())
-        except:
-            return ''
-
-        if valor < 0:
-            return 'color: #d32f2f; background-color: #ffebee'
-        elif valor > 0:
-            return 'color: #2e7d32'
-        else:
-            return 'color: #9e9e9e'
-
     def aplicar_estilo_celula(val):
         """Aplica estilo baseado no valor."""
         if pd.isna(val):
@@ -266,7 +235,7 @@ def main():
     exibir_status_conexao(armazenamento)
     exibir_menu_lateral(armazenamento)
 
-    st.title("📊 Previsibilidade")
+    st.title("Previsibilidade")
     st.caption("Fluxo de Caixa Diário - Visualize seu saldo futuro projetado dia a dia")
 
     # Carregar dados
@@ -339,23 +308,23 @@ def main():
 
     with col1:
         st.metric(
-            label="💰 Saldo Inicial",
+            label="Saldo Inicial",
             value=formatar_valor_br(saldo_inicial_total),
             help="Saldo acumulado até o último dia do mês anterior"
         )
 
     with col2:
         st.metric(
-            label="📈 Previsão Saldo Final",
+            label="Previsão Saldo Final",
             value=formatar_valor_br(saldo_final_total),
-            delta=f"Comum: {formatar_valor_br(saldo_final_comum)}",
+            delta=f"Disponível: {formatar_valor_br(saldo_final_comum)}",
             help="Saldo projetado para o último dia do mês"
         )
 
     with col3:
         delta_resultado = "Superávit" if resultado_mes >= 0 else "Déficit"
         st.metric(
-            label="📊 Resultado do Mês",
+            label="Resultado do Mês",
             value=formatar_valor_br(resultado_mes),
             delta=delta_resultado,
             delta_color="normal" if resultado_mes >= 0 else "inverse",
@@ -365,7 +334,7 @@ def main():
     st.markdown("---")
 
     # ========== TABELA DE FLUXO DE CAIXA ==========
-    st.subheader(f"📅 Fluxo de Caixa Diário")
+    st.subheader("Fluxo de Caixa Diário")
 
     # Preparar DataFrame para exibição
     df_display = df_fluxo.copy()
@@ -383,15 +352,12 @@ def main():
     # Selecionar colunas para exibição
     df_tabela = df_display[['Data_Display', 'Entradas_Fmt', 'Saidas_Fmt', 'Saldo_Dia_Fmt',
                             'Saldo_Acum_Comum_Fmt', 'Saldo_Acum_VR_Fmt', 'Data_Original']].copy()
-    df_tabela.columns = ['Data', 'Entradas', 'Saídas', 'Saldo Dia', 'Saldo Comum', 'Saldo VR', 'Data_Original']
-
-    # Aplicar estilos
-    styled_df = aplicar_estilos(df_tabela, data_hoje)
+    df_tabela.columns = ['Data', 'Entradas', 'Saídas', 'Saldo Dia', 'Saldo Disponível', 'Saldo Benefício', 'Data_Original']
 
     # Ocultar coluna auxiliar e exibir
     df_tabela_final = df_tabela.drop(columns=['Data_Original'])
 
-    # Aplicar estilos novamente no df final
+    # Aplicar estilos
     def highlight_hoje_final(row):
         idx = row.name
         try:
@@ -418,7 +384,7 @@ def main():
         except:
             return ''
 
-    colunas_valor = ['Entradas', 'Saídas', 'Saldo Dia', 'Saldo Comum', 'Saldo VR']
+    colunas_valor = ['Entradas', 'Saídas', 'Saldo Dia', 'Saldo Disponível', 'Saldo Benefício']
 
     styled_final = df_tabela_final.style.apply(highlight_hoje_final, axis=1)
     for col in colunas_valor:
@@ -436,8 +402,8 @@ def main():
             "Entradas": st.column_config.TextColumn("💚 Entradas", width="small"),
             "Saídas": st.column_config.TextColumn("❤️ Saídas", width="small"),
             "Saldo Dia": st.column_config.TextColumn("📊 Saldo Dia", width="small"),
-            "Saldo Comum": st.column_config.TextColumn("🏦 Saldo Comum", width="medium"),
-            "Saldo VR": st.column_config.TextColumn("🍽️ Saldo VR", width="medium"),
+            "Saldo Disponível": st.column_config.TextColumn("🏦 Saldo Disponível", width="medium"),
+            "Saldo Benefício": st.column_config.TextColumn("🎫 Saldo Benefício", width="medium"),
         }
     )
 

@@ -27,7 +27,11 @@ from utils import (
     resetar_preferencias_update,
     REQUESTS_DISPONIVEL,
     TIPOS_TRANSACAO,
-    CATEGORIAS_PADRAO
+    CATEGORIAS_PADRAO,
+    # Novas importações para Contas e Cartões
+    carregar_contas,
+    carregar_cartoes,
+    CATALOGO_BANCOS
 )
 
 # ============================================================
@@ -86,6 +90,195 @@ def main():
 
     # Carregar dados
     df = carregar_dados()
+
+    # ========== SEÇÃO: MINHAS CONTAS E CARTÕES ==========
+    contas = carregar_contas()
+    cartoes = carregar_cartoes()
+
+    # Função auxiliar para calcular saldo de uma conta
+    def calcular_saldo_conta(df_transacoes, nome_conta, saldo_inicial):
+        """Calcula o saldo atual de uma conta: Saldo Inicial + Receitas - Despesas"""
+        if df_transacoes.empty:
+            return saldo_inicial
+        # Por enquanto, como não temos vínculo direto conta->transação,
+        # retornamos o saldo inicial (futuramente pode ser expandido)
+        return saldo_inicial
+
+    # Função auxiliar para calcular fatura do cartão
+    def calcular_fatura_cartao(df_transacoes, nome_cartao):
+        """Calcula a fatura atual do cartão (despesas do mês atual)"""
+        if df_transacoes.empty:
+            return 0.0
+        # Filtrar despesas do mês atual
+        mes_atual = datetime.now().month
+        ano_atual = datetime.now().year
+        df_mes = df_transacoes[
+            (df_transacoes['Data'].dt.month == mes_atual) &
+            (df_transacoes['Data'].dt.year == ano_atual) &
+            (df_transacoes['Tipo'] == 'Despesa')
+        ]
+        # Por enquanto retorna total de despesas do mês
+        # (futuramente pode filtrar por cartão específico)
+        return df_mes['Valor'].sum() if not df_mes.empty else 0.0
+
+    # Mostrar seções apenas se houver contas ou cartões
+    if contas or cartoes:
+
+        # ========== SEÇÃO: MINHAS CONTAS ==========
+        if contas:
+            st.subheader("Minhas Contas")
+
+            # Calcular saldo total
+            saldo_total_contas = sum(c['saldo_inicial'] for c in contas)
+
+            # Exibir cards horizontalmente
+            num_contas = len(contas)
+            cols_contas = st.columns(min(num_contas, 4))
+
+            for idx, conta in enumerate(contas[:4]):  # Máximo 4 cards
+                cor = conta['cor_hex']
+                cor_sec = conta.get('cor_secundaria', '#FFFFFF')
+                logo = conta.get('logo_url', '')
+                nome = conta['nome']
+                banco_nome = conta['banco_nome']
+                saldo = conta['saldo_inicial']
+
+                # Logo HTML
+                if logo:
+                    logo_html = f'<img src="{logo}" style="width: 35px; height: 35px; object-fit: contain; filter: brightness(0) invert(1);">'
+                else:
+                    logo_html = f'<div style="width: 35px; height: 35px; background: rgba(255,255,255,0.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem;">{banco_nome[0]}</div>'
+
+                with cols_contas[idx % len(cols_contas)]:
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, {cor}, {cor}DD);
+                        border-radius: 12px;
+                        padding: 18px;
+                        color: white;
+                        box-shadow: 0 4px 15px {cor}40;
+                        min-height: 120px;
+                    ">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                            <div>
+                                <div style="font-weight: 700; font-size: 1rem;">{nome}</div>
+                                <div style="font-size: 0.75rem; opacity: 0.85;">{banco_nome}</div>
+                            </div>
+                            {logo_html}
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Saldo Atual</div>
+                            <div style="font-weight: 700; font-size: 1.4rem;">{formatar_valor_br(saldo)}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # Mostrar totalizador
+            st.markdown(f"""
+            <div style="text-align: right; margin-top: 10px; padding-right: 10px;">
+                <span style="color: #666; font-size: 0.9rem;">Saldo Total: </span>
+                <span style="font-weight: 700; font-size: 1.1rem; color: #2e7d32;">{formatar_valor_br(saldo_total_contas)}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        # ========== SEÇÃO: MEUS CARTÕES ==========
+        if cartoes:
+            st.subheader("Meus Cartões")
+
+            # Calcular fatura total (despesas do mês)
+            fatura_total = 0.0
+            if not df.empty:
+                df_temp = df.copy()
+                df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+                mes_atual = datetime.now().month
+                ano_atual = datetime.now().year
+                df_mes_atual = df_temp[
+                    (df_temp['Data'].dt.month == mes_atual) &
+                    (df_temp['Data'].dt.year == ano_atual) &
+                    (df_temp['Tipo'] == 'Despesa')
+                ]
+                fatura_total = df_mes_atual['Valor'].sum() if not df_mes_atual.empty else 0.0
+
+            # Distribuir fatura entre cartões (proporcional ao limite)
+            limite_total = sum(c['limite'] for c in cartoes)
+
+            # Exibir cards horizontalmente
+            num_cartoes = len(cartoes)
+            cols_cartoes = st.columns(min(num_cartoes, 4))
+
+            for idx, cartao in enumerate(cartoes[:4]):  # Máximo 4 cards
+                cor = cartao['cor_hex']
+                cor_sec = cartao.get('cor_secundaria', '#FFFFFF')
+                logo = cartao.get('logo_url', '')
+                nome = cartao['nome']
+                limite = cartao['limite']
+                dia_venc = cartao['dia_vencimento']
+                dia_fech = cartao['dia_fechamento']
+
+                # Calcular fatura proporcional ao limite
+                if limite_total > 0:
+                    fatura_cartao = (limite / limite_total) * fatura_total
+                else:
+                    fatura_cartao = 0.0
+
+                # Percentual usado
+                percentual_usado = (fatura_cartao / limite * 100) if limite > 0 else 0
+
+                # Logo HTML
+                if logo:
+                    logo_html = f'<img src="{logo}" style="width: 30px; height: 30px; object-fit: contain; filter: brightness(0) invert(1); opacity: 0.9;">'
+                else:
+                    logo_html = ''
+
+                with cols_cartoes[idx % len(cols_cartoes)]:
+                    st.markdown(f"""
+                    <div style="
+                        background: linear-gradient(135deg, {cor}, {cor}CC);
+                        border-radius: 14px;
+                        padding: 18px;
+                        color: white;
+                        box-shadow: 0 6px 20px {cor}50;
+                        min-height: 140px;
+                        position: relative;
+                        overflow: hidden;
+                    ">
+                        <div style="position: absolute; top: -20px; right: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="font-weight: 700; font-size: 0.95rem;">{nome}</div>
+                            {logo_html}
+                        </div>
+                        <div style="margin-top: 12px;">
+                            <div style="font-size: 0.65rem; opacity: 0.8; text-transform: uppercase;">Fatura Atual</div>
+                            <div style="font-weight: 700; font-size: 1.3rem;">{formatar_valor_br(fatura_cartao)}</div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.75rem; opacity: 0.9;">
+                            <span>📅 Venc: dia {dia_venc:02d}</span>
+                            <span>Limite: {formatar_valor_br(limite)}</span>
+                        </div>
+                        <div style="margin-top: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; height: 6px; overflow: hidden;">
+                            <div style="width: {min(percentual_usado, 100):.0f}%; height: 100%; background: rgba(255,255,255,0.8); border-radius: 4px;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # Mostrar totalizador
+            st.markdown(f"""
+            <div style="text-align: right; margin-top: 10px; padding-right: 10px;">
+                <span style="color: #666; font-size: 0.9rem;">Fatura Total do Mês: </span>
+                <span style="font-weight: 700; font-size: 1.1rem; color: #d32f2f;">{formatar_valor_br(fatura_total)}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+    else:
+        # Nenhuma conta ou cartão cadastrado - mostrar botão para cadastrar
+        st.info("💡 Você ainda não cadastrou contas ou cartões. Configure-os para ter uma visão completa!")
+        if st.button("🏦 Cadastrar Contas e Cartões", type="secondary"):
+            st.switch_page("pages/04_Contas_e_Cartoes.py")
+        st.markdown("---")
 
     # Verificar se o DataFrame está vazio
     if df.empty:

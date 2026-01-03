@@ -2,9 +2,7 @@
 # ARQUIVOS DE CREDENCIAIS E SECRETS
 # ========================================
 credentials.json
-*.json
-!package.json
-!package-lock.json
+credenciais.json
 
 # Arquivos de ambiente
 .env
@@ -70,10 +68,15 @@ desktop.ini
 .streamlit/
 
 # ========================================
-# DADOS LOCAIS (CSV, Excel originais)
+# DADOS LOCAIS DO USUÁRIO (não commitar dados pessoais)
 # ========================================
-*.csv
+dados_financeiros.csv
+preferencias_update.csv
 *.xlsx
 *.xls
-!requirements.txt
 
+# ========================================
+# SCRIPTS TEMPORÁRIOS
+# ========================================
+download_logos.py
+download_log.txt
