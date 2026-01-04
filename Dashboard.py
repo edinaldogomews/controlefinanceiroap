@@ -108,9 +108,8 @@ def modal_editar_conta_dashboard(conta_id: int):
 # FUNÇÕES DE RENDERIZAÇÃO DE COMPONENTES
 # ============================================================
 
-def renderizar_kpis_topo(saldo_atual_total, receitas_periodo, despesas_periodo, balanco_transferencias, saldo_inicial_total, saldo_previsto):
-    """Renderiza o card principal de saldo e o resumo de receitas/despesas."""
-    # Renderizar Card Principal (Topo)
+def renderizar_card_saldo(saldo_atual_total, saldo_inicial_total, saldo_previsto):
+    """Renderiza o card principal de saldo (Topo)."""
     st.markdown(f"""
 <div style="
     background-color: #1f2430;
@@ -168,7 +167,9 @@ def renderizar_kpis_topo(saldo_atual_total, receitas_periodo, despesas_periodo, 
 </div>
 """, unsafe_allow_html=True)
 
-    # Renderizar Lista "Visão Geral"
+
+def renderizar_resumo_geral(saldo_atual_total, receitas_periodo, despesas_periodo, balanco_transferencias):
+    """Renderiza a lista de resumo geral (Contas, Receitas, Despesas, Balanço)."""
     st.markdown(f"""
 <div style="
   background-color: #1f2430;
@@ -493,30 +494,36 @@ def renderizar_ultimas_transacoes(df_mes):
 # ============================================================
 def renderizar_configuracao():
     """Renderiza a página de configuração do Dashboard."""
-    st.title("⚙️ Configurar Resumo")
+    st.title("Configurar Resumo")
     st.markdown("Personalize quais componentes aparecem no seu Dashboard e a ordem de exibição.")
     st.markdown("---")
 
     arquivo_prefs = "preferencias_update.csv"
     
+    # Dados padrão atualizados
+    dados_padrao = [
+        {'Componente': 'Card_Saldo', 'Visivel': True, 'Ordem': 1},
+        {'Componente': 'Resumo_Geral', 'Visivel': True, 'Ordem': 2},
+        {'Componente': 'Grafico_Movimentacao', 'Visivel': True, 'Ordem': 3},
+        {'Componente': 'Lista_Contas', 'Visivel': True, 'Ordem': 4},
+        {'Componente': 'Lista_Cartoes', 'Visivel': True, 'Ordem': 5},
+        {'Componente': 'Grafico_Categoria', 'Visivel': True, 'Ordem': 6},
+        {'Componente': 'Grafico_Fluxo', 'Visivel': True, 'Ordem': 7},
+        {'Componente': 'Ultimas_Transacoes', 'Visivel': True, 'Ordem': 8}
+    ]
+
     # Carregar preferências
     if os.path.exists(arquivo_prefs):
         try:
             df_prefs = pd.read_csv(arquivo_prefs)
+            # Verificar se é a versão antiga com KPIs_Topo
+            if 'KPIs_Topo' in df_prefs['Componente'].values:
+                st.warning("Estrutura do dashboard atualizada. Suas preferências foram resetadas para o novo padrão.")
+                df_prefs = pd.DataFrame(dados_padrao)
         except Exception as e:
             st.error(f"Erro ao carregar preferências: {e}")
-            df_prefs = pd.DataFrame(columns=['Componente', 'Visivel', 'Ordem'])
+            df_prefs = pd.DataFrame(dados_padrao)
     else:
-        # Padrão
-        dados_padrao = [
-            {'Componente': 'KPIs_Topo', 'Visivel': True, 'Ordem': 1},
-            {'Componente': 'Grafico_Movimentacao', 'Visivel': True, 'Ordem': 2},
-            {'Componente': 'Lista_Contas', 'Visivel': True, 'Ordem': 3},
-            {'Componente': 'Lista_Cartoes', 'Visivel': True, 'Ordem': 4},
-            {'Componente': 'Grafico_Categoria', 'Visivel': True, 'Ordem': 5},
-            {'Componente': 'Grafico_Fluxo', 'Visivel': True, 'Ordem': 6},
-            {'Componente': 'Ultimas_Transacoes', 'Visivel': True, 'Ordem': 7}
-        ]
         df_prefs = pd.DataFrame(dados_padrao)
 
     # Editor de dados
@@ -538,7 +545,7 @@ def renderizar_configuracao():
     
     col1, col2 = st.columns([1, 4])
     with col1:
-        if st.button("💾 Salvar e Voltar", type="primary", use_container_width=True):
+        if st.button("Salvar e Voltar", type="primary", use_container_width=True):
             # Salvar no CSV
             try:
                 df_editado.to_csv(arquivo_prefs, index=False)
@@ -780,15 +787,23 @@ def main():
     
     # Carregar preferências
     arquivo_prefs = "preferencias_update.csv"
+    
+    # Defaults
+    defaults = ['Card_Saldo', 'Resumo_Geral', 'Grafico_Movimentacao', 'Lista_Contas', 'Lista_Cartoes', 'Grafico_Categoria', 'Grafico_Fluxo', 'Ultimas_Transacoes']
+
     if os.path.exists(arquivo_prefs):
         try:
             df_prefs = pd.read_csv(arquivo_prefs)
-            df_prefs = df_prefs[df_prefs['Visivel'] == True].sort_values('Ordem')
-            componentes_ativos = df_prefs['Componente'].tolist()
+            # Migration check
+            if 'KPIs_Topo' in df_prefs['Componente'].values:
+                componentes_ativos = defaults
+            else:
+                df_prefs = df_prefs[df_prefs['Visivel'] == True].sort_values('Ordem')
+                componentes_ativos = df_prefs['Componente'].tolist()
         except:
-            componentes_ativos = ['KPIs_Topo', 'Grafico_Movimentacao', 'Lista_Contas', 'Lista_Cartoes', 'Grafico_Categoria', 'Grafico_Fluxo', 'Ultimas_Transacoes']
+            componentes_ativos = defaults
     else:
-        componentes_ativos = ['KPIs_Topo', 'Grafico_Movimentacao', 'Lista_Contas', 'Lista_Cartoes', 'Grafico_Categoria', 'Grafico_Fluxo', 'Ultimas_Transacoes']
+        componentes_ativos = defaults
 
     if not componentes_ativos:
         st.info("Nada para mostrar, configure seu resumo no botão abaixo.")
@@ -796,9 +811,13 @@ def main():
     # Loop de renderização
     for componente in componentes_ativos:
         try:
-            if componente == 'KPIs_Topo':
-                renderizar_kpis_topo(saldo_atual_total, receitas_periodo, despesas_periodo, balanco_transferencias, saldo_inicial_total, saldo_previsto)
+            if componente == 'Card_Saldo':
+                renderizar_card_saldo(saldo_atual_total, saldo_inicial_total, saldo_previsto)
             
+            elif componente == 'Resumo_Geral':
+                renderizar_resumo_geral(saldo_atual_total, receitas_periodo, despesas_periodo, balanco_transferencias)
+                st.markdown("---") # Espaçamento após o resumo
+
             elif componente == 'Grafico_Movimentacao':
                 renderizar_grafico_movimentacao(df_mes)
                 st.markdown("---")
@@ -812,11 +831,6 @@ def main():
                     st.markdown("---")
             
             elif componente == 'Grafico_Categoria':
-                # Agrupando gráficos lado a lado se o próximo também for gráfico?
-                # Por simplicidade, vamos renderizar um em baixo do outro ou usar colunas se possível
-                # O layout original usava colunas para Categoria e Fluxo.
-                # Aqui vamos renderizar bloco a bloco. Se o usuário quiser lado a lado, complexidade aumenta.
-                # Vou renderizar em bloco completo por enquanto.
                 renderizar_grafico_categoria(df_mes, label_periodo)
             
             elif componente == 'Grafico_Fluxo':
