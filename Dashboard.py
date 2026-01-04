@@ -391,6 +391,47 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
+    # ========== CÁLCULOS GERAIS PARA DASHBOARD ==========
+    # Calcular saldos usando função do utils
+    saldos = calcular_saldos(df_filtrado)
+    totais_mes = calcular_totais_periodo(df_mes)
+
+    # Label dinâmico para os cards do mês
+    label_periodo = f" ({mes_selecionado_fmt})" if mes_selecionado is not None else " (Geral)"
+
+    # ========== GRÁFICO: MOVIMENTAÇÃO MENSAL ==========
+    st.markdown("#### Movimentação por Mês")
+
+    if not df_mes.empty:
+        df_mensal = df_mes.copy()
+        df_mensal = df_mensal.dropna(subset=['Data'])
+
+        if not df_mensal.empty:
+            df_mensal['Mês'] = df_mensal['Data'].dt.to_period('M').astype(str)
+            gastos_mensais = df_mensal.groupby(['Mês', 'Tipo'])['Valor'].sum().reset_index()
+            gastos_mensais['Mês_Fmt'] = gastos_mensais['Mês'].apply(formatar_mes_curto)
+
+            fig_barras = px.bar(
+                gastos_mensais,
+                x='Mês_Fmt',
+                y='Valor',
+                color='Tipo',
+                barmode='group',
+                color_discrete_map={'Receita': '#2ecc71', 'Despesa': '#e74c3c'}
+            )
+            fig_barras.update_layout(
+                xaxis_title="Mês",
+                yaxis_title="Valor (R$)",
+                margin=dict(t=20, b=20, l=20, r=20)
+            )
+            st.plotly_chart(fig_barras, use_container_width=True)
+        else:
+            st.info("Nenhum dado com data válida.")
+    else:
+        st.info("Nenhum dado disponível para o período selecionado.")
+
+    st.markdown("---")
+
     # ========== SEÇÃO: CONTAS ==========
     # Carregar saldos atualizados de cada conta
     saldos_info_detalhado = calcular_saldos_atuais()
@@ -586,6 +627,71 @@ def main():
             st.switch_page("pages/04_Contas_e_Cartoes.py")
         st.markdown("---")
 
+    # ========== GRÁFICOS: CATEGORIA E COMPARATIVO ==========
+    col_grafico1, col_grafico2 = st.columns(2)
+
+    with col_grafico1:
+        st.markdown(f"#### Gastos por Categoria{label_periodo}")
+
+        if not df_mes.empty:
+            gastos_categoria = df_mes.groupby('Categoria')['Valor'].sum().reset_index()
+            gastos_categoria = gastos_categoria.sort_values('Valor', ascending=False)
+
+            fig_rosca = px.pie(
+                gastos_categoria,
+                values='Valor',
+                names='Categoria',
+                hole=0.5,
+                color_discrete_sequence=px.colors.qualitative.Set2
+            )
+            fig_rosca.update_traces(
+                textposition='outside',
+                textinfo='percent+label',
+                hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<br>Percentual: %{percent}<extra></extra>'
+            )
+            fig_rosca.update_layout(
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                margin=dict(t=20, b=20, l=20, r=20)
+            )
+            st.plotly_chart(fig_rosca, use_container_width=True)
+        else:
+            st.info("Nenhum dado disponível para o período selecionado.")
+
+    with col_grafico2:
+        st.markdown(f"#### Receitas vs Despesas{label_periodo}")
+
+        if not df_mes.empty:
+            comparativo = pd.DataFrame({
+                'Tipo': ['Receitas', 'Despesas'],
+                'Valor': [totais_mes['total_receitas'], totais_mes['total_despesas']]
+            })
+
+            fig_comp = px.bar(
+                comparativo,
+                x='Tipo',
+                y='Valor',
+                color='Tipo',
+                color_discrete_map={'Receitas': '#2ecc71', 'Despesas': '#e74c3c'},
+                text_auto=True
+            )
+            fig_comp.update_traces(
+                texttemplate='R$ %{y:,.2f}',
+                textposition='outside'
+            )
+            fig_comp.update_layout(
+                showlegend=False,
+                xaxis_title="",
+                yaxis_title="Valor (R$)",
+                height=490,
+                margin=dict(t=20, b=20, l=20, r=20)
+            )
+            st.plotly_chart(fig_comp, use_container_width=True)
+        else:
+            st.info("Nenhum dado disponível para o período selecionado.")
+
+    st.markdown("---")
+
     # ========== VERIFICAR SE HÁ TRANSAÇÕES ==========
     # Mesmo sem transações, mostrar resumo se houver contas cadastradas
     if df.empty:
@@ -704,13 +810,6 @@ def main():
     # ========== KPIs - MÉTRICAS PRINCIPAIS ==========
     st.subheader("Resumo Financeiro")
 
-    # Calcular saldos usando função do utils
-    saldos = calcular_saldos(df_filtrado)
-    totais_mes = calcular_totais_periodo(df_mes)
-
-    # Label dinâmico para os cards do mês
-    label_periodo = f" ({mes_selecionado_fmt})" if mes_selecionado is not None else " (Geral)"
-
     # Definir número de colunas baseado na existência de VR
     if saldos['mostrar_card_vr']:
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -771,101 +870,6 @@ def main():
             )
 
     st.markdown("---")
-
-    # ========== GRÁFICOS ==========
-    st.subheader("Visualizações")
-
-    col_grafico1, col_grafico2 = st.columns(2)
-
-    with col_grafico1:
-        st.markdown(f"#### Gastos por Categoria{label_periodo}")
-
-        if not df_mes.empty:
-            gastos_categoria = df_mes.groupby('Categoria')['Valor'].sum().reset_index()
-            gastos_categoria = gastos_categoria.sort_values('Valor', ascending=False)
-
-            fig_rosca = px.pie(
-                gastos_categoria,
-                values='Valor',
-                names='Categoria',
-                hole=0.5,
-                color_discrete_sequence=px.colors.qualitative.Set2
-            )
-            fig_rosca.update_traces(
-                textposition='outside',
-                textinfo='percent+label',
-                hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<br>Percentual: %{percent}<extra></extra>'
-            )
-            fig_rosca.update_layout(
-                showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-                margin=dict(t=20, b=20, l=20, r=20)
-            )
-            st.plotly_chart(fig_rosca, use_container_width=True)
-        else:
-            st.info("Nenhum dado disponível para o período selecionado.")
-
-    with col_grafico2:
-        st.markdown("#### Movimentação por Mês")
-
-        if not df_mes.empty:
-            df_mensal = df_mes.copy()
-            df_mensal = df_mensal.dropna(subset=['Data'])
-
-            if not df_mensal.empty:
-                df_mensal['Mês'] = df_mensal['Data'].dt.to_period('M').astype(str)
-                gastos_mensais = df_mensal.groupby(['Mês', 'Tipo'])['Valor'].sum().reset_index()
-                gastos_mensais['Mês_Fmt'] = gastos_mensais['Mês'].apply(formatar_mes_curto)
-
-                fig_barras = px.bar(
-                    gastos_mensais,
-                    x='Mês_Fmt',
-                    y='Valor',
-                    color='Tipo',
-                    barmode='group',
-                    color_discrete_map={'Receita': '#2ecc71', 'Despesa': '#e74c3c'}
-                )
-                fig_barras.update_layout(
-                    xaxis_title="Mês",
-                    yaxis_title="Valor (R$)",
-                    margin=dict(t=20, b=20, l=20, r=20)
-                )
-                st.plotly_chart(fig_barras, use_container_width=True)
-            else:
-                st.info("Nenhum dado com data válida.")
-        else:
-            st.info("Nenhum dado disponível para o período selecionado.")
-
-    st.markdown(f"#### Receitas vs Despesas{label_periodo}")
-
-    if not df_mes.empty:
-        comparativo = pd.DataFrame({
-            'Tipo': ['Receitas', 'Despesas'],
-            'Valor': [totais_mes['total_receitas'], totais_mes['total_despesas']]
-        })
-
-        fig_comp = px.bar(
-            comparativo,
-            x='Tipo',
-            y='Valor',
-            color='Tipo',
-            color_discrete_map={'Receitas': '#2ecc71', 'Despesas': '#e74c3c'},
-            text_auto=True
-        )
-        fig_comp.update_traces(
-            texttemplate='R$ %{y:,.2f}',
-            textposition='outside'
-        )
-        fig_comp.update_layout(
-            showlegend=False,
-            xaxis_title="",
-            yaxis_title="Valor (R$)",
-            height=490,
-            margin=dict(t=20, b=20, l=20, r=20)
-        )
-        st.plotly_chart(fig_comp, use_container_width=True)
-    else:
-        st.info("Nenhum dado disponível para o período selecionado.")
 
     # ========== RODAPÉ ==========
     exibir_rodape(auto_update.versao_local)

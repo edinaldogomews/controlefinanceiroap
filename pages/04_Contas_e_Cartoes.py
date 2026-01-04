@@ -552,13 +552,17 @@ def main():
                             modal_editar_conta(conta_id)
 
                     with col_del:
-                        if st.button("Excluir", key=f"del_conta_{conta_id}", help="Excluir esta conta"):
-                            sucesso, msg = excluir_conta(conta_id)
-                            if sucesso:
-                                st.success(msg)
-                                st.rerun()
-                            else:
-                                st.error(msg)
+                        # Impedir exclusão da conta padrão "Carteira"
+                        if conta['nome'] == 'Carteira':
+                            st.button("Excluir", key=f"del_conta_{conta_id}", disabled=True, help="A conta padrão 'Carteira' não pode ser excluída")
+                        else:
+                            if st.button("Excluir", key=f"del_conta_{conta_id}", help="Excluir esta conta"):
+                                sucesso, msg = excluir_conta(conta_id)
+                                if sucesso:
+                                    st.success(msg)
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
 
                     st.markdown("<br>", unsafe_allow_html=True)
 
