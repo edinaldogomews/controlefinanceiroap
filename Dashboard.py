@@ -331,8 +331,8 @@ def main():
         st.markdown("---")
     else:
         # Nenhuma conta ou cartão cadastrado - mostrar botão para cadastrar
-        st.info("💡 Você ainda não cadastrou contas ou cartões. Configure-os para ter uma visão completa!")
-        if st.button("🏦 Cadastrar Contas e Cartões", type="secondary"):
+        st.info("Você ainda não cadastrou contas ou cartões. Configure-os para ter uma visão completa.")
+        if st.button("Cadastrar Contas e Cartões", type="secondary"):
             st.switch_page("pages/04_Contas_e_Cartoes.py")
         st.markdown("---")
 

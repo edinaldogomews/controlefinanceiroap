@@ -520,7 +520,7 @@ def main():
         st.markdown("### Minhas Contas Bancárias")
 
         # Botão Nova Conta
-        if st.button("➕ Nova Conta", type="primary", key="btn_nova_conta"):
+        if st.button("Nova Conta", type="primary", key="btn_nova_conta"):
             modal_nova_conta()
 
         st.markdown("---")
