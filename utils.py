@@ -786,9 +786,10 @@ def exibir_rodape(versao_local: str = None):
     st.sidebar.markdown(
         f"""
         <div style="font-size: 0.85rem; color: #888; line-height: 1.5;">
-            <p style="margin: 3px 0;">Desenvolvido por Edinaldo Gomes</p>
             <p style="margin: 3px 0;">📧 edinaldosantos.contato@gmail.com</p>
             <p style="margin: 3px 0;">📦 Versão: {versao_local}</p>
+            <p style="margin: 3px 0;">Desenvolvido por Edinaldo Gomes</p>
+            <p style="margin: 3px 0;"> </p>
             <p style="margin: 3px 0;">© 2025 Todos os direitos reservados</p>
         </div>
         """,
@@ -801,40 +802,91 @@ def exibir_status_conexao(armazenamento):
     modo_texto, modo_tipo, is_online = armazenamento.get_modo_info()
 
     if is_online:
+        # Status Online - Verde elegante
         st.sidebar.markdown(
             f"""
             <div style="
-                background: linear-gradient(90deg, #d4edda, #c3e6cb);
-                border: 1px solid #28a745;
-                border-radius: 15px;
-                padding: 5px 12px;
-                display: inline-block;
-                margin-bottom: 10px;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                border-radius: 20px;
+                padding: 8px 16px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 15px;
+                box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
             ">
-                <span style="color: #155724; font-weight: 600; font-size: 0.55rem;">
-                    {modo_texto}
+                <span style="
+                    width: 8px;
+                    height: 8px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    display: inline-block;
+                    animation: pulse 2s infinite;
+                "></span>
+                <span style="color: #ffffff; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.3px;">
+                    Conectado à Nuvem
+                </span>
+            </div>
+            <style>
+                @keyframes pulse {{
+                    0%, 100% {{ opacity: 1; }}
+                    50% {{ opacity: 0.5; }}
+                }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+    elif modo_tipo == "warning":
+        # Status Offline CSV - Laranja elegante
+        st.sidebar.markdown(
+            """
+            <div style="
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                border-radius: 20px;
+                padding: 8px 16px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 15px;
+                box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+            ">
+                <span style="
+                    width: 8px;
+                    height: 8px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    display: inline-block;
+                "></span>
+                <span style="color: #ffffff; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.3px;">
+                    Modo Offline (CSV Local)
                 </span>
             </div>
             """,
             unsafe_allow_html=True
         )
     else:
-        cor_fundo = "#fff3cd" if modo_tipo == "warning" else "#f8d7da"
-        cor_borda = "#ffc107" if modo_tipo == "warning" else "#dc3545"
-        cor_texto = "#856404" if modo_tipo == "warning" else "#721c24"
-
+        # Status Erro/Memória - Vermelho elegante
         st.sidebar.markdown(
-            f"""
+            """
             <div style="
-                background: linear-gradient(90deg, {cor_fundo}, {cor_fundo});
-                border: 1px solid {cor_borda};
-                border-radius: 15px;
-                padding: 5px 12px;
-                display: inline-block;
-                margin-bottom: 10px;
+                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                border-radius: 20px;
+                padding: 8px 16px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 15px;
+                box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
             ">
-                <span style="color: {cor_texto}; font-weight: 600; font-size: 0.55rem;">
-                    {modo_texto}
+                <span style="
+                    width: 8px;
+                    height: 8px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    display: inline-block;
+                "></span>
+                <span style="color: #ffffff; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.3px;">
+                    Memória Temporária
                 </span>
             </div>
             """,

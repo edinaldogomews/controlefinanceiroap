@@ -214,7 +214,7 @@ def main():
         with col_total1:
             st.markdown(f"""
             <div style="text-align: left; margin-top: 10px; padding-left: 10px;">
-                <span style="color: #666; font-size: 0.85rem;">💰 Disponível: </span>
+                <span style="color: #666; font-size: 0.85rem;">Disponível: </span>
                 <span style="font-weight: 700; font-size: 1rem; color: #2e7d32;">{formatar_valor_br(saldos_info['total_disponivel'])}</span>
             </div>
             """, unsafe_allow_html=True)
@@ -223,7 +223,7 @@ def main():
             if saldos_info['total_beneficio'] > 0:
                 st.markdown(f"""
                 <div style="text-align: left; margin-top: 10px;">
-                    <span style="color: #666; font-size: 0.85rem;">🎫 Benefícios: </span>
+                    <span style="color: #666; font-size: 0.85rem;">Benefícios: </span>
                     <span style="font-weight: 700; font-size: 1rem; color: #1565c0;">{formatar_valor_br(saldos_info['total_beneficio'])}</span>
                 </div>
                 """, unsafe_allow_html=True)
