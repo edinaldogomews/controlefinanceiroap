@@ -387,7 +387,7 @@ def aplicar_estilo_global():
 # ============================================================
 # MODAL DE GESTÃO GLOBAL (Novo Lançamento)
 # ============================================================
-@st.dialog("Gestão de Lançamentos", width="large")
+@st.dialog("Gestão de Lançamentos", width="medium")
 def modal_gestao(armazenamento):
     """Modal global para adicionar, editar e excluir transações."""
     from datetime import date
@@ -405,7 +405,7 @@ def modal_gestao(armazenamento):
 
     # Adicionar contas bancárias
     for conta in contas_usuario:
-        nome_exibir = f"🏦 {conta['nome']} ({conta['banco_nome']})"
+        nome_exibir = f"{conta['nome']} ({conta['banco_nome']})"
         opcoes_conta.append(nome_exibir)
         mapa_contas[nome_exibir] = conta['nome']
 
@@ -421,7 +421,7 @@ def modal_gestao(armazenamento):
         mapa_contas = {c: c for c in TIPOS_CONTA}
 
     # Criar abas
-    aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "✏️ Editar", "🗑️ Excluir"])
+    aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "Editar", "🗑️ Excluir"])
 
     # ========== ABA 1: NOVA TRANSAÇÃO ==========
     with aba_nova:
@@ -524,7 +524,7 @@ def modal_gestao(armazenamento):
             # Pegar últimas 10 transações (mais recentes)
             df_edit = df.copy()
             df_edit['Data'] = pd.to_datetime(df_edit['Data'], errors='coerce')
-            df_edit = df_edit.sort_values('Data', ascending=False).head(10).reset_index(drop=True)
+            df_edit = df_edit.sort_values('Data', ascending=False).head(15).reset_index(drop=True)
 
             # Selecionar transação
             opcoes_edit = []
@@ -1583,9 +1583,9 @@ def get_armazenamento():
     return ArmazenamentoHibrido()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=5)
 def carregar_dados():
-    """Carrega dados usando o sistema híbrido com cache."""
+    """Carrega dados usando o sistema híbrido com cache curto para responsividade."""
     armazenamento = get_armazenamento()
     return armazenamento.carregar_dados()
 
