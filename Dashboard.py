@@ -290,27 +290,66 @@ def main():
     # Previsto (Por enquanto igual ao atual, ou poderia somar contas fixas futuras)
     saldo_previsto = saldo_atual_total 
 
-    # Renderizar Card Principal (Topo) com componentes nativos
-    topo_container = st.container()
-    with topo_container:
-        col_topo1, col_topo2, col_topo3 = st.columns(3)
-        with col_topo1:
-            st.metric("Inicial", formatar_valor_br(saldo_inicial_total))
-        with col_topo2:
-            st.metric("Saldo atual", formatar_valor_br(saldo_atual_total))
-        with col_topo3:
-            st.metric("Previsto", formatar_valor_br(saldo_previsto))
+    # Renderizar Card Principal (Topo)
+    # IMPORTANTE: Usar st.html para garantir renderização correta de HTML
+    st.markdown(f"""
+<div style="
+    background-color: #1f2430;
+    padding: 24px 30px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    margin-bottom: 25px;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+">
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; text-align: center; margin-bottom: 20px;">
+        <div style="flex: 1;">
+            <div style="font-size: 1.2rem; font-weight: 700; color: #b0bec5; margin-bottom: 4px;">{formatar_valor_br(saldo_inicial_total)}</div>
+            <div style="font-size: 0.85rem; font-weight: 500; color: #78909c; letter-spacing: 0.5px;">Inicial</div>
+        </div>
+        <div style="flex: 1.2; padding-bottom: 5px;">
+            <div style="font-size: 1.8rem; font-weight: 800; color: #ffffff; margin-bottom: 4px; text-shadow: 0 0 20px rgba(66, 165, 245, 0.4);">{formatar_valor_br(saldo_atual_total)}</div>
+            <div style="font-size: 0.95rem; font-weight: 600; color: #42a5f5; letter-spacing: 0.5px;">Saldo atual</div>
+        </div>
+        <div style="flex: 1;">
+            <div style="font-size: 1.2rem; font-weight: 700; color: #b0bec5; margin-bottom: 4px;">{formatar_valor_br(saldo_previsto)}</div>
+            <div style="font-size: 0.85rem; font-weight: 500; color: #78909c; letter-spacing: 0.5px;">Previsto</div>
+        </div>
+    </div>
+    <div style="
+        width: 100%;
+        height: 12px;
+        background-color: rgba(255,255,255,0.1);
+        border-radius: 6px;
+        margin-top: 15px;
+        overflow: visible;
+        position: relative;
+    ">
+        <div style="
+            width: 50%; 
+            height: 100%; 
+            background: linear-gradient(90deg, #42a5f5, #2196f3);
+            border-radius: 6px;
+            box-shadow: 0 0 12px rgba(33, 150, 243, 0.5);
+        "></div>
+        <div style="
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            background-color: #2196f3;
+            border: 3px solid #1f2430;
+            border-radius: 50%;
+            box-shadow: 0 0 0 2px #42a5f5;
+        "></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-        # Barra de progresso simples representando relação entre atual e previsto
-        try:
-            ratio = 0.0
-            if abs(saldo_previsto) > 1e-9:
-                ratio = max(0.0, min(saldo_atual_total / saldo_previsto, 1.0))
-            st.progress(int(ratio * 100))
-        except Exception:
-            st.progress(0)
-
-    st.subheader("Visão geral")
+    # Renderizar Lista "Visão Geral"
     st.markdown(f"""
 <div style="
   background-color: #1f2430;
