@@ -455,40 +455,6 @@ def renderizar_grafico_fluxo(totais_mes, label_periodo):
         st.info("Nenhum dado disponível para o período selecionado.")
 
 
-def renderizar_ultimas_transacoes(df_mes):
-    """Renderiza uma tabela com as últimas transações do período."""
-    st.subheader("Últimas Transações")
-    
-    if not df_mes.empty:
-        # Ordenar por data decrescente e pegar as últimas 10
-        df_exibir = df_mes.sort_values('Data', ascending=False).head(10).copy()
-        
-        # Selecionar e renomear colunas para exibição
-        colunas = ['Data', 'Descrição', 'Categoria', 'Valor', 'Tipo', 'Conta']
-        df_exibir = df_exibir[colunas]
-        
-        # Formatar Data
-        df_exibir['Data'] = df_exibir['Data'].dt.strftime('%d/%m/%Y')
-        
-        # Formatar Valor
-        df_exibir['Valor'] = df_exibir['Valor'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        
-        st.dataframe(
-            df_exibir, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "Tipo": st.column_config.TextColumn(
-                    "Tipo",
-                    help="Tipo de transação",
-                    width="medium",
-                )
-            }
-        )
-    else:
-        st.info("Nenhuma transação encontrada no período.")
-
-
 # ============================================================
 # PÁGINA DE CONFIGURAÇÃO (SPA)
 # ============================================================
@@ -508,14 +474,16 @@ def renderizar_configuracao():
         {'Componente': 'Lista_Contas', 'Visivel': True, 'Ordem': 4},
         {'Componente': 'Lista_Cartoes', 'Visivel': True, 'Ordem': 5},
         {'Componente': 'Grafico_Categoria', 'Visivel': True, 'Ordem': 6},
-        {'Componente': 'Grafico_Fluxo', 'Visivel': True, 'Ordem': 7},
-        {'Componente': 'Ultimas_Transacoes', 'Visivel': True, 'Ordem': 8}
+        {'Componente': 'Grafico_Fluxo', 'Visivel': True, 'Ordem': 7}
     ]
 
     # Carregar preferências
     if os.path.exists(arquivo_prefs):
         try:
             df_prefs = pd.read_csv(arquivo_prefs)
+            # Filtrar componentes removidos (como Ultimas_Transacoes)
+            df_prefs = df_prefs[df_prefs['Componente'] != 'Ultimas_Transacoes']
+            
             # Verificar se é a versão antiga com KPIs_Topo
             if 'KPIs_Topo' in df_prefs['Componente'].values:
                 st.warning("Estrutura do dashboard atualizada. Suas preferências foram resetadas para o novo padrão.")
@@ -844,7 +812,7 @@ def main():
     arquivo_prefs = "preferencias_update.csv"
     
     # Defaults
-    defaults = ['Card_Saldo', 'Resumo_Geral', 'Grafico_Movimentacao', 'Lista_Contas', 'Lista_Cartoes', 'Grafico_Categoria', 'Grafico_Fluxo', 'Ultimas_Transacoes']
+    defaults = ['Card_Saldo', 'Resumo_Geral', 'Grafico_Movimentacao', 'Lista_Contas', 'Lista_Cartoes', 'Grafico_Categoria', 'Grafico_Fluxo']
 
     if os.path.exists(arquivo_prefs):
         try:
@@ -853,6 +821,8 @@ def main():
             if 'KPIs_Topo' in df_prefs['Componente'].values:
                 componentes_ativos = defaults
             else:
+                # Filtrar componentes removidos
+                df_prefs = df_prefs[df_prefs['Componente'] != 'Ultimas_Transacoes']
                 df_prefs = df_prefs[df_prefs['Visivel'] == True].sort_values('Ordem')
                 componentes_ativos = df_prefs['Componente'].tolist()
         except:
@@ -892,10 +862,6 @@ def main():
                 renderizar_grafico_fluxo(totais_mes, label_periodo)
                 st.markdown("---")
 
-            elif componente == 'Ultimas_Transacoes':
-                renderizar_ultimas_transacoes(df_mes)
-                st.markdown("---")
-                
         except Exception as e:
             st.error(f"Erro ao renderizar componente {componente}: {e}")
 
