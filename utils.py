@@ -6,7 +6,7 @@ Contém todas as funções lógicas, classes e constantes do sistema.
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import shutil
 import tempfile
 import zipfile
@@ -387,10 +387,15 @@ def aplicar_estilo_global():
 # ============================================================
 # MODAL DE GESTÃO GLOBAL (Novo Lançamento)
 # ============================================================
-@st.dialog("Gestão de Lançamentos", width="medium")
+@st.dialog("Gestão de Lançamentos", width="small")
 def modal_gestao(armazenamento):
     """Modal global para adicionar, editar e excluir transações."""
     from datetime import date
+    # Tentar importar dateutil para parcelas, senão usar pandas
+    try:
+        from dateutil.relativedelta import relativedelta
+    except ImportError:
+        pass
 
     # Carregar dados
     df = armazenamento.carregar_dados()
@@ -399,120 +404,251 @@ def modal_gestao(armazenamento):
     contas_usuario = carregar_contas()
     cartoes_usuario = carregar_cartoes()
 
-    # Montar lista de opções de conta/cartão
-    opcoes_conta = []
-    mapa_contas = {}  # Para mapear nome exibido -> valor a salvar
-
-    # Adicionar contas bancárias
+    # Montar listas de opções separadas
+    # Contas (Dinheiro/Banco)
+    opcoes_conta_banco = []
+    mapa_contas_banco = {}
     for conta in contas_usuario:
         nome_exibir = f"{conta['nome']} ({conta['banco_nome']})"
-        opcoes_conta.append(nome_exibir)
-        mapa_contas[nome_exibir] = conta['nome']
-
-    # Adicionar cartões de crédito
+        opcoes_conta_banco.append(nome_exibir)
+        mapa_contas_banco[nome_exibir] = conta['nome']
+    
+    # Cartões
+    opcoes_cartao = []
+    mapa_cartoes = {}
     for cartao in cartoes_usuario:
         nome_exibir = f"💳 {cartao['nome']} ({cartao['banco_nome']})"
-        opcoes_conta.append(nome_exibir)
-        mapa_contas[nome_exibir] = cartao['nome']
+        opcoes_cartao.append(nome_exibir)
+        mapa_cartoes[nome_exibir] = cartao['nome']
 
-    # Se não houver contas/cartões cadastrados, usar opções padrão
-    if not opcoes_conta:
-        opcoes_conta = TIPOS_CONTA
-        mapa_contas = {c: c for c in TIPOS_CONTA}
+    # Todas as opções (para editar/excluir legado ou geral)
+    opcoes_todas = opcoes_conta_banco + opcoes_cartao
+    mapa_todos = {**mapa_contas_banco, **mapa_cartoes}
+
+    # Se não houver nada, usar padrão
+    if not opcoes_todas:
+        opcoes_todas = TIPOS_CONTA
+        mapa_todos = {c: c for c in TIPOS_CONTA}
+        # Fallback para listas vazias
+        opcoes_conta_banco = TIPOS_CONTA
+        mapa_contas_banco = mapa_todos
+
+    # Inicializar estado da navegação da aba Nova
+    if 'modal_opcao' not in st.session_state:
+        st.session_state['modal_opcao'] = None
 
     # Criar abas
     aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "Editar", "🗑️ Excluir"])
 
-    # ========== ABA 1: NOVA TRANSAÇÃO ==========
+    # ========== ABA 1: NOVA TRANSAÇÃO (REFORMULADA) ==========
     with aba_nova:
-        st.subheader("Nova Transação")
+        # Usar um container vazio para atualizar o conteúdo sem precisar de rerun completo da página
+        container_novo = st.container()
 
-        with st.form(key="form_modal_nova", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-
-            with col1:
-                nova_conta = st.selectbox(
-                    "Conta/Cartão",
-                    options=opcoes_conta,
-                    key="modal_conta"
-                )
-
-            with col2:
-                novo_tipo = st.selectbox(
-                    "Tipo",
-                    options=TIPOS_TRANSACAO,
-                    key="modal_tipo"
-                )
-
-            col3, col4 = st.columns(2)
-
-            with col3:
-                nova_data = st.date_input(
-                    "Data",
-                    value=date.today(),
-                    format="DD/MM/YYYY",
-                    key="modal_data"
-                )
-
-            with col4:
-                novo_valor = st.number_input(
-                    "Valor (R$)",
-                    min_value=0.01,
-                    value=None,
-                    step=0.01,
-                    format="%.2f",
-                    placeholder="0.00",
-                    key="modal_valor"
-                )
-
-            # Categorias baseadas no tipo
-            if novo_tipo == "Receita":
-                categorias = CAT_RECEITA
-            else:
-                categorias = CAT_DESPESA
-
-            nova_categoria = st.selectbox(
-                "Categoria",
-                options=categorias,
-                key="modal_categoria"
+        with container_novo:
+            # Seletor de Tipo de Transação (Substitui os botões que causam rerun)
+            tipo_transacao = st.radio(
+                "Tipo de Lançamento:",
+                options=['Transferência', 'Receita', 'Despesa', 'Despesa Cartão'],
+                horizontal=True,
+                key="radio_tipo_lancamento"
             )
+            
+            st.divider()
 
-            nova_descricao = st.text_input(
-                "Descrição",
-                placeholder="Ex: Salário, Conta de Luz, etc.",
-                key="modal_descricao"
-            )
+            # --- FORMULÁRIO: TRANSFERÊNCIA ---
+            if tipo_transacao == 'Transferência':
+                st.markdown("##### Nova Transferência")
+                with st.form("form_transferencia", clear_on_submit=True):
+                    col_origem, col_destino = st.columns(2)
+                    with col_origem:
+                        conta_origem = st.selectbox("De (Origem)", options=opcoes_conta_banco, key="transf_origem")
+                    with col_destino:
+                        conta_destino = st.selectbox("Para (Destino)", options=opcoes_conta_banco, key="transf_destino")
+                    
+                    col_val, col_data = st.columns(2)
+                    with col_val:
+                        valor = st.number_input("Valor (R$)", min_value=0.01, step=0.01, format="%.2f", key="transf_valor")
+                    with col_data:
+                        data_transf = st.date_input("Data", value=date.today(), format="DD/MM/YYYY", key="transf_data")
+                        
+                    descricao = st.text_input("Descrição", value="Transferência entre contas", key="transf_desc")
+                    
+                    submit = st.form_submit_button("Confirmar Transferência", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if conta_origem == conta_destino:
+                            st.error("A conta de origem e destino devem ser diferentes.")
+                        elif valor <= 0:
+                            st.error("Valor inválido.")
+                        else:
+                            nome_origem = mapa_contas_banco.get(conta_origem, conta_origem)
+                            nome_destino = mapa_contas_banco.get(conta_destino, conta_destino)
+                            
+                            # Salvar Saída
+                            ok1, msg1 = armazenamento.salvar_transacao(
+                                data_transf, f"TRF Enviada: {descricao}", "Transferência", valor, "Despesa", nome_origem
+                            )
+                            # Salvar Entrada
+                            ok2, msg2 = armazenamento.salvar_transacao(
+                                data_transf, f"TRF Recebida: {descricao}", "Transferência", valor, "Receita", nome_destino
+                            )
+                            
+                            if ok1 and ok2:
+                                st.success("Transferência realizada com sucesso!")
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error(f"Erro: {msg1} / {msg2}")
 
-            submit_nova = st.form_submit_button(
-                "💾 Salvar",
-                use_container_width=True,
-                type="primary"
-            )
+            # --- FORMULÁRIO: RECEITA ---
+            elif tipo_transacao == 'Receita':
+                st.markdown("##### Nova Receita")
+                with st.form("form_receita", clear_on_submit=True):
+                    col_conta, col_cat = st.columns(2)
+                    with col_conta:
+                        # Receita apenas em contas bancárias (usualmente)
+                        conta = st.selectbox("Conta Destino", options=opcoes_conta_banco, key="rec_conta")
+                    with col_cat:
+                        categoria = st.selectbox("Categoria", options=CAT_RECEITA, key="rec_cat")
+                        
+                    col_val, col_data = st.columns(2)
+                    with col_val:
+                        valor = st.number_input("Valor (R$)", min_value=0.01, step=0.01, format="%.2f", key="rec_valor")
+                    with col_data:
+                        data_rec = st.date_input("Data", value=date.today(), format="DD/MM/YYYY", key="rec_data")
+                        
+                    descricao = st.text_input("Descrição", placeholder="Ex: Salário", key="rec_desc")
+                    
+                    submit = st.form_submit_button("Salvar Receita", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if not descricao:
+                            st.error("Descrição obrigatória.")
+                        elif valor <= 0:
+                            st.error("Valor inválido.")
+                        else:
+                            nome_conta = mapa_contas_banco.get(conta, conta)
+                            ok, msg = armazenamento.salvar_transacao(
+                                data_rec, descricao, categoria, valor, "Receita", nome_conta
+                            )
+                            if ok:
+                                st.success(msg)
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error(msg)
 
-            if submit_nova:
-                if not nova_descricao.strip():
-                    st.error("A descrição é obrigatória!")
-                elif novo_valor is None or novo_valor <= 0:
-                    st.error("O valor deve ser maior que zero!")
+            # --- FORMULÁRIO: DESPESA ---
+            elif tipo_transacao == 'Despesa':
+                st.markdown("##### Nova Despesa (Conta)")
+                with st.form("form_despesa", clear_on_submit=True):
+                    col_conta, col_cat = st.columns(2)
+                    with col_conta:
+                        # Despesa de Contas (exclui cartões neste fluxo)
+                        conta = st.selectbox("Conta Origem", options=opcoes_conta_banco, key="desp_conta")
+                    with col_cat:
+                        categoria = st.selectbox("Categoria", options=CAT_DESPESA, key="desp_cat")
+                        
+                    col_val, col_data = st.columns(2)
+                    with col_val:
+                        valor = st.number_input("Valor (R$)", min_value=0.01, step=0.01, format="%.2f", key="desp_valor")
+                    with col_data:
+                        data_desp = st.date_input("Data", value=date.today(), format="DD/MM/YYYY", key="desp_data")
+                        
+                    descricao = st.text_input("Descrição", placeholder="Ex: Aluguel", key="desp_desc")
+                    
+                    submit = st.form_submit_button("Salvar Despesa", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if not descricao:
+                            st.error("Descrição obrigatória.")
+                        elif valor <= 0:
+                            st.error("Valor inválido.")
+                        else:
+                            nome_conta = mapa_contas_banco.get(conta, conta)
+                            ok, msg = armazenamento.salvar_transacao(
+                                data_desp, descricao, categoria, valor, "Despesa", nome_conta
+                            )
+                            if ok:
+                                st.success(msg)
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error(msg)
+
+            # --- FORMULÁRIO: DESPESA CARTÃO ---
+            elif tipo_transacao == 'Despesa Cartão':
+                st.markdown("##### Nova Despesa (Cartão)")
+                
+                # Aviso se não houver cartões
+                if not opcoes_cartao:
+                    st.warning("Nenhum cartão cadastrado. Cadastre um cartão na página 'Contas e Cartões' primeiro.")
                 else:
-                    # Obter o nome real da conta/cartão para salvar
-                    conta_salvar = mapa_contas.get(nova_conta, nova_conta)
+                    with st.form("form_cartao", clear_on_submit=True):
+                        col_conta, col_cat = st.columns(2)
+                        with col_conta:
+                            conta = st.selectbox("Cartão", options=opcoes_cartao, key="card_conta")
+                        with col_cat:
+                            categoria = st.selectbox("Categoria", options=CAT_DESPESA, key="card_cat")
+                            
+                        col_val, col_data = st.columns(2)
+                        with col_val:
+                            valor_total = st.number_input("Valor Total (R$)", min_value=0.01, step=0.01, format="%.2f", key="card_valor")
+                        with col_data:
+                            data_compra = st.date_input("Data da Compra", value=date.today(), format="DD/MM/YYYY", key="card_data")
+                            
+                        col_desc, col_parc = st.columns([2, 1])
+                        with col_desc:
+                            descricao = st.text_input("Descrição", placeholder="Ex: Compras", key="card_desc")
+                        with col_parc:
+                            parcelas = st.number_input("Parcelas", min_value=1, value=1, step=1, key="card_parc")
+                        
+                        submit = st.form_submit_button("Salvar Compra", type="primary", use_container_width=True)
+                        
+                        if submit:
+                            if not descricao:
+                                st.error("Descrição obrigatória.")
+                            elif valor_total <= 0:
+                                st.error("Valor inválido.")
+                            else:
+                                nome_cartao = mapa_cartoes.get(conta, conta)
+                                valor_parcela = valor_total / parcelas
+                                
+                                erros = []
+                                for i in range(parcelas):
+                                    # Calcular data: Data Compra + i meses
+                                    try:
+                                        data_parcela = pd.to_datetime(data_compra) + pd.DateOffset(months=i)
+                                        data_parcela = data_parcela.date()
+                                    except Exception:
+                                        # Fallback se pd.DateOffset falhar
+                                        import calendar
+                                        year = data_compra.year + (data_compra.month + i - 1) // 12
+                                        month = (data_compra.month + i - 1) % 12 + 1
+                                        day = min(data_compra.day, calendar.monthrange(year, month)[1])
+                                        data_parcela = date(year, month, day)
+                                    
+                                    desc_final = f"{descricao}"
+                                    if parcelas > 1:
+                                        desc_final += f" ({i+1}/{parcelas})"
+                                    
+                                    ok, msg = armazenamento.salvar_transacao(
+                                        data_parcela, desc_final, categoria, valor_parcela, "Despesa", nome_cartao
+                                    )
+                                    if not ok:
+                                        erros.append(msg)
+                                
+                                if not erros:
+                                    st.success(f"Compra salva em {parcelas} parcela(s)!")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                else:
+                                    st.error(f"Erro ao salvar algumas parcelas: {', '.join(erros)}")
 
-                    sucesso, mensagem = armazenamento.salvar_transacao(
-                        nova_data,
-                        nova_descricao.strip(),
-                        nova_categoria,
-                        novo_valor,
-                        novo_tipo,
-                        conta_salvar
-                    )
-
-                    if sucesso:
-                        st.success(f"✅ {mensagem}")
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {mensagem}")
+    # Recriando variáveis para compatibilidade com o código original das abas Editar/Excluir
+    opcoes_conta = opcoes_todas
+    mapa_contas = mapa_todos
 
     # ========== ABA 2: EDITAR TRANSAÇÃO ==========
     with aba_editar:
@@ -694,6 +830,7 @@ def exibir_botao_novo_lancamento(armazenamento):
     # Verificar se deve abrir o modal
     if st.session_state.get('show_novo_lancamento_modal', False):
         st.session_state['show_novo_lancamento_modal'] = False
+        st.session_state['modal_opcao'] = None  # Resetar estado do modal
         modal_gestao(armazenamento)
 
     # Injetar CSS e HTML para criar o botão flutuante
@@ -2183,10 +2320,14 @@ def calcular_saldo_anterior_com_inicial(df: pd.DataFrame, tipo_grupo: str, data_
     # 4. Filtrar transações anteriores ao mês
     df_temp = df.copy()
     df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+    
+    # Garantir que data_inicio_mes seja datetime para comparação correta
+    if isinstance(data_inicio_mes, date) and not isinstance(data_inicio_mes, datetime):
+        data_inicio_mes = datetime.combine(data_inicio_mes, datetime.min.time())
 
     df_anterior = df_temp[
         (df_temp['Conta'].isin(lista_contas)) &
-        (df_temp['Data'].dt.date < data_inicio_mes)
+        (df_temp['Data'] < data_inicio_mes)
     ]
 
     if df_anterior.empty:

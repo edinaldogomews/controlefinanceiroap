@@ -37,6 +37,7 @@ from utils import (
     TIPOS_GRUPO_CONTA,
     # NOVAS FUNÇÕES para Cold Start
     calcular_saldos_atuais,
+    calcular_saldo_anterior_com_inicial,
     obter_saldo_total_disponivel,
     obter_saldo_total_beneficios
 )
@@ -141,102 +142,215 @@ def main():
     # Carregar dados
     df = carregar_dados()
 
-    # ========== SEÇÃO: MINHAS CONTAS E CARTÕES ==========
+    # ========== CRIAR COLUNA MÊS/ANO PARA FILTRO ==========
+    df['Data'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
+    df['Mes_Ano'] = df['Data'].dt.to_period('M').astype(str)
+    df['Mes_Ano_Fmt'] = df['Mes_Ano'].apply(formatar_mes_ano_completo)
+
+    # Obter tipos e categorias únicas para os filtros
+    tipos_unicos = df['Tipo'].dropna().unique().tolist()
+    categorias_unicas = df['Categoria'].dropna().unique().tolist()
+
+    # Obter lista de meses únicos
+    meses_unicos = df[df['Mes_Ano'] != 'NaT']['Mes_Ano'].dropna().unique().tolist()
+    meses_unicos = sorted(meses_unicos, reverse=True)
+    meses_formatados = [formatar_mes_ano_completo(m) for m in meses_unicos]
+
+    # ========== SIDEBAR - FILTRO DE MÊS (VISÍVEL) ==========
+    st.sidebar.header("Período")
+
+    if meses_formatados:
+        opcoes_meses = ["Todos os meses"] + meses_formatados
+        mes_atual_sistema = datetime.now().strftime('%Y-%m')
+
+        if mes_atual_sistema in meses_unicos:
+            idx_mes_atual = meses_unicos.index(mes_atual_sistema)
+            indice_padrao = idx_mes_atual + 1
+        else:
+            indice_padrao = 1 if len(opcoes_meses) > 1 else 0
+
+        mes_selecionado_fmt = st.sidebar.selectbox(
+            "Selecione o Mês",
+            options=opcoes_meses,
+            index=indice_padrao,
+            key="filtro_mes"
+        )
+
+        if mes_selecionado_fmt == "Todos os meses":
+            mes_selecionado = None
+        else:
+            idx = meses_formatados.index(mes_selecionado_fmt)
+            mes_selecionado = meses_unicos[idx]
+    else:
+        mes_selecionado = None
+        mes_selecionado_fmt = "Todos os meses"
+
+    # ========== SIDEBAR - FILTROS AVANÇADOS (EXPANDER) ==========
+    with st.sidebar.expander("Filtros Avançados", expanded=False):
+        tipos_selecionados = st.multiselect(
+            "Tipo de Transação",
+            options=tipos_unicos,
+            default=tipos_unicos,
+            key="filtro_tipo"
+        )
+
+        categorias_selecionadas = st.multiselect(
+            "Categorias",
+            options=categorias_unicas,
+            default=categorias_unicas,
+            key="filtro_categoria"
+        )
+
+    # Aplicar filtros de tipo e categoria
+    df_filtrado = df[
+        (df['Tipo'].isin(tipos_selecionados)) &
+        (df['Categoria'].isin(categorias_selecionadas))
+    ]
+
+    # Filtrar por mês
+    if mes_selecionado is not None:
+        df_mes = df_filtrado[df_filtrado['Mes_Ano'] == mes_selecionado].copy()
+    else:
+        df_mes = df_filtrado.copy()
+
+
+
+    # ========== VISÃO GERAL (NOVO LAYOUT) ==========
     contas = carregar_contas()
     cartoes = carregar_cartoes()
+    
+    # Cálculos para o Visão Geral
+    # Se filtro de mês estiver ativo, usar mês selecionado, senão mês atual
+    if mes_selecionado:
+        data_ref = pd.to_datetime(mes_selecionado + '-01')
+        mes_num = data_ref.month
+        ano_num = data_ref.year
+        data_inicio = datetime(ano_num, mes_num, 1)
+        if mes_num == 12:
+            data_fim = datetime(ano_num + 1, 1, 1)
+        else:
+            data_fim = datetime(ano_num, mes_num + 1, 1)
+    else:
+        # Se "Todos os meses", vamos usar o mês atual para o card de visão geral
+        # ou talvez mostrar o acumulado total?
+        # Pela imagem, parece focar num mês. Vamos assumir mês atual se "Todos"
+        agora = datetime.now()
+        mes_num = agora.month
+        ano_num = agora.year
+        data_inicio = datetime(ano_num, mes_num, 1)
+        if mes_num == 12:
+            data_fim = datetime(ano_num + 1, 1, 1)
+        else:
+            data_fim = datetime(ano_num, mes_num + 1, 1)
 
-    # ========== CALCULAR SALDOS ATUAIS (COM SALDO INICIAL - COLD START) ==========
-    saldos_info = calcular_saldos_atuais()
+    # 1. Saldo Inicial (Até o início do mês)
+    # Somar saldo de todas as contas (Disponível + Benefício)
+    saldo_inicial_disp = calcular_saldo_anterior_com_inicial(df, 'Disponível', data_inicio)
+    saldo_inicial_ben = calcular_saldo_anterior_com_inicial(df, 'Benefício', data_inicio)
+    saldo_inicial_total = saldo_inicial_disp + saldo_inicial_ben
 
-    # Mostrar seções de contas
-    if contas:
-        # ========== SEÇÃO: MINHAS CONTAS ==========
-        st.subheader("Minhas Contas")
+    # 2. Filtrar dados do mês para Receitas, Despesas e Transferências
+    df_temp = df.copy()
+    df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+    
+    mask_mes = (df_temp['Data'] >= data_inicio) & (df_temp['Data'] < data_fim)
+    df_periodo = df_temp[mask_mes]
 
-        # Usar o saldo calculado (inclui Saldo Inicial + Transações)
-        saldo_total_contas = saldos_info['total_geral']
+    # Calcular totais
+    # Receitas (excluindo transferências internas se a categoria for 'Transferência')
+    receitas_periodo = df_periodo[
+        (df_periodo['Tipo'] == 'Receita') & 
+        (df_periodo['Categoria'] != 'Transferência')
+    ]['Valor'].sum()
 
-        # Criar mapa de saldos atuais para acesso rápido
-        mapa_saldos = {c['nome']: c['saldo_atual'] for c in saldos_info['contas']}
+    # Despesas (excluindo transferências internas)
+    despesas_periodo = df_periodo[
+        (df_periodo['Tipo'] == 'Despesa') & 
+        (df_periodo['Categoria'] != 'Transferência')
+    ]['Valor'].sum()
 
-        # Exibir cards horizontalmente
-        num_contas = len(contas)
-        cols_contas = st.columns(min(num_contas, 4))
+    # Balanço de Transferências (Receita Transf - Despesa Transf)
+    transf_entrada = df_periodo[
+        (df_periodo['Tipo'] == 'Receita') & 
+        (df_periodo['Categoria'] == 'Transferência')
+    ]['Valor'].sum()
+    
+    transf_saida = df_periodo[
+        (df_periodo['Tipo'] == 'Despesa') & 
+        (df_periodo['Categoria'] == 'Transferência')
+    ]['Valor'].sum()
+    
+    balanco_transferencias = transf_entrada - transf_saida
 
-        for idx, conta in enumerate(contas[:4]):  # Máximo 4 cards
-            cor = conta['cor_hex']
-            cor_sec = conta.get('cor_secundaria', '#FFFFFF')
-            logo = conta.get('logo_url', '')
-            nome = conta['nome']
-            banco_nome = conta['banco_nome']
-            conta_id = conta['id']
+    # Saldo Atual (Final do Mês ou acumulado até agora dentro do mês)
+    # Inicial + Receitas Totais (inc. transf) - Despesas Totais (inc. transf)
+    # Ou simplesmente Inicial + Receitas Periodo - Despesas Periodo + Balanço Transferencias
+    saldo_atual_total = saldo_inicial_total + receitas_periodo - despesas_periodo + balanco_transferencias
+    
+    # Previsto (Por enquanto igual ao atual, ou poderia somar contas fixas futuras)
+    saldo_previsto = saldo_atual_total 
 
-            # USAR SALDO CALCULADO (Saldo Inicial + Transações)
-            saldo = mapa_saldos.get(nome, conta.get('saldo_inicial', 0.0))
+    # Renderizar Card Principal (Topo) com componentes nativos
+    topo_container = st.container()
+    with topo_container:
+        col_topo1, col_topo2, col_topo3 = st.columns(3)
+        with col_topo1:
+            st.metric("Inicial", formatar_valor_br(saldo_inicial_total))
+        with col_topo2:
+            st.metric("Saldo atual", formatar_valor_br(saldo_atual_total))
+        with col_topo3:
+            st.metric("Previsto", formatar_valor_br(saldo_previsto))
 
-            # Logo HTML
-            if logo:
-                logo_html = f'<img src="{logo}" style="width: 35px; height: 35px; object-fit: contain; filter: brightness(0) invert(1);">'
-            else:
-                logo_html = f'<div style="width: 35px; height: 35px; background: rgba(255,255,255,0.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem;">{banco_nome[0]}</div>'
+        # Barra de progresso simples representando relação entre atual e previsto
+        try:
+            ratio = 0.0
+            if abs(saldo_previsto) > 1e-9:
+                ratio = max(0.0, min(saldo_atual_total / saldo_previsto, 1.0))
+            st.progress(int(ratio * 100))
+        except Exception:
+            st.progress(0)
 
-            with cols_contas[idx % len(cols_contas)]:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, {cor}, {cor}DD);
-                    border-radius: 12px;
-                    padding: 18px;
-                    color: white;
-                    box-shadow: 0 4px 15px {cor}40;
-                    min-height: 120px;
-                ">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
-                        <div>
-                            <div style="font-weight: 700; font-size: 1rem;">{nome}</div>
-                            <div style="font-size: 0.75rem; opacity: 0.85;">{banco_nome}</div>
-                        </div>
-                        {logo_html}
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Saldo Atual</div>
-                        <div style="font-weight: 700; font-size: 1.4rem;">{formatar_valor_br(saldo)}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Botão de editar discreto abaixo do card
-                if st.button("Editar saldo", key=f"dash_edit_{conta_id}", help="Editar saldo desta conta", type="secondary"):
-                    modal_editar_conta_dashboard(conta_id)
-
-        # Mostrar totalizador por tipo
-        col_total1, col_total2 = st.columns(2)
-
-        with col_total1:
-            st.markdown(f"""
-            <div style="text-align: left; margin-top: 10px; padding-left: 10px;">
-                <span style="color: #666; font-size: 0.85rem;">Disponível: </span>
-                <span style="font-weight: 700; font-size: 1rem; color: #2e7d32;">{formatar_valor_br(saldos_info['total_disponivel'])}</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-        with col_total2:
-            if saldos_info['total_beneficio'] > 0:
-                st.markdown(f"""
-                <div style="text-align: left; margin-top: 10px;">
-                    <span style="color: #666; font-size: 0.85rem;">Benefícios: </span>
-                    <span style="font-weight: 700; font-size: 1rem; color: #1565c0;">{formatar_valor_br(saldos_info['total_beneficio'])}</span>
-                </div>
-                """, unsafe_allow_html=True)
-
-        # Total geral
-        st.markdown(f"""
-        <div style="text-align: right; margin-top: 5px; padding-right: 10px;">
-            <span style="color: #666; font-size: 0.9rem;">Saldo Total: </span>
-            <span style="font-weight: 700; font-size: 1.1rem; color: #2e7d32;">{formatar_valor_br(saldo_total_contas)}</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("Visão geral")
+    st.markdown(f"""
+<div style="
+  background-color: #1f2430;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 16px 18px;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+">
+  <div style="display:flex; justify-content:space-between; align-items:center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="width:40px; height:40px; background: rgba(25,118,210,0.18); color:#90caf9; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">🏛️</div>
+      <span style="font-size:1rem; font-weight:600;">Contas</span>
+    </div>
+    <span style="font-weight:700; color:#e0e0e0;">{formatar_valor_br(saldo_atual_total)}</span>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="width:40px; height:40px; background: rgba(46,125,50,0.18); color:#66bb6a; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">＋</div>
+      <span style="font-size:1rem; font-weight:600;">Receitas</span>
+    </div>
+    <span style="font-weight:700; color:#e0e0e0;">{formatar_valor_br(receitas_periodo)}</span>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="width:40px; height:40px; background: rgba(198,40,40,0.18); color:#ef5350; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">－</div>
+      <span style="font-size:1rem; font-weight:600;">Despesas</span>
+    </div>
+    <span style="font-weight:700; color:#e0e0e0;">{formatar_valor_br(despesas_periodo)}</span>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0;">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="width:40px; height:40px; background: rgba(251,192,45,0.18); color:#fdd835; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">⇄</div>
+      <span style="font-size:1rem; font-weight:600;">Balanço transferências</span>
+    </div>
+    <span style="font-weight:700; color:#e0e0e0;">{formatar_valor_br(balanco_transferencias)}</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     # ========== SEÇÃO: MEUS CARTÕES ==========
     if cartoes:
@@ -244,26 +358,44 @@ def main():
 
         # Calcular fatura total (despesas do mês)
         fatura_total = 0.0
+        # Dicionário para armazenar faturas individuais por cartão
+        faturas_por_cartao = {c['nome']: 0.0 for c in cartoes}
+        
         if not df.empty:
             df_temp = df.copy()
             df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
             mes_atual = datetime.now().month
             ano_atual = datetime.now().year
+            
+            # Filtrar despesas do mês atual
             df_mes_atual = df_temp[
                 (df_temp['Data'].dt.month == mes_atual) &
                 (df_temp['Data'].dt.year == ano_atual) &
                 (df_temp['Tipo'] == 'Despesa')
             ]
+            
+            # Calcular fatura total
             fatura_total = df_mes_atual['Valor'].sum() if not df_mes_atual.empty else 0.0
+            
+            # Calcular fatura por cartão
+            if not df_mes_atual.empty:
+                gastos_por_conta = df_mes_atual.groupby('Conta')['Valor'].sum()
+                for nome_cartao in faturas_por_cartao.keys():
+                    if nome_cartao in gastos_por_conta:
+                        faturas_por_cartao[nome_cartao] = gastos_por_conta[nome_cartao]
 
-        # Distribuir fatura entre cartões (proporcional ao limite)
+        # Distribuir fatura entre cartões (proporcional ao limite) - LEGADO
+        # MANTIDO APENAS COMO FALLBACK se não houver dados específicos
         limite_total = sum(c['limite'] for c in cartoes)
 
         # Exibir cards horizontalmente
         num_cartoes = len(cartoes)
-        cols_cartoes = st.columns(min(num_cartoes, 4))
+        # Ajustar para exibir até 4 colunas ou menos
+        cols_cartoes = st.columns(min(num_cartoes, 4)) if num_cartoes > 0 else []
 
-        for idx, cartao in enumerate(cartoes[:4]):  # Máximo 4 cards
+        for idx, cartao in enumerate(cartoes):
+            # Se tiver mais que 4 cartões, continuar na linha de baixo (grid)
+            
             cor = cartao['cor_hex']
             cor_sec = cartao.get('cor_secundaria', '#FFFFFF')
             logo = cartao.get('logo_url', '')
@@ -272,11 +404,14 @@ def main():
             dia_venc = cartao['dia_vencimento']
             dia_fech = cartao['dia_fechamento']
 
-            # Calcular fatura proporcional ao limite
-            if limite_total > 0:
-                fatura_cartao = (limite / limite_total) * fatura_total
-            else:
-                fatura_cartao = 0.0
+            # Calcular fatura real do cartão
+            fatura_cartao = faturas_por_cartao.get(nome, 0.0)
+            
+            # Se a soma das faturas individuais for 0 mas houver fatura total (casos legados ou erro de nome),
+            # usar rateio proporcional como fallback
+            soma_faturas_individuais = sum(faturas_por_cartao.values())
+            if soma_faturas_individuais == 0 and fatura_total > 0 and limite_total > 0:
+                 fatura_cartao = (limite / limite_total) * fatura_total
 
             # Percentual usado
             percentual_usado = (fatura_cartao / limite * 100) if limite > 0 else 0
@@ -287,44 +422,46 @@ def main():
             else:
                 logo_html = ''
 
-            with cols_cartoes[idx % len(cols_cartoes)]:
+            # Usar a coluna correspondente (ciclando se houver mais de 4)
+            with cols_cartoes[idx % 4]:
                 st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, {cor}, {cor}CC);
-                    border-radius: 14px;
-                    padding: 18px;
-                    color: white;
-                    box-shadow: 0 6px 20px {cor}50;
-                    min-height: 140px;
-                    position: relative;
-                    overflow: hidden;
-                ">
-                    <div style="position: absolute; top: -20px; right: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div style="font-weight: 700; font-size: 0.95rem;">{nome}</div>
-                        {logo_html}
-                    </div>
-                    <div style="margin-top: 12px;">
-                        <div style="font-size: 0.65rem; opacity: 0.8; text-transform: uppercase;">Fatura Atual</div>
-                        <div style="font-weight: 700; font-size: 1.3rem;">{formatar_valor_br(fatura_cartao)}</div>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.75rem; opacity: 0.9;">
-                        <span>📅 Venc: dia {dia_venc:02d}</span>
-                        <span>Limite: {formatar_valor_br(limite)}</span>
-                    </div>
-                    <div style="margin-top: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; height: 6px; overflow: hidden;">
-                        <div style="width: {min(percentual_usado, 100):.0f}%; height: 100%; background: rgba(255,255,255,0.8); border-radius: 4px;"></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+<div style="
+    background: linear-gradient(135deg, {cor}, {cor}CC);
+    border-radius: 14px;
+    padding: 18px;
+    color: white;
+    box-shadow: 0 6px 20px {cor}50;
+    min-height: 140px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 15px;
+">
+    <div style="position: absolute; top: -20px; right: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="font-weight: 700; font-size: 0.95rem;">{nome}</div>
+        {logo_html}
+    </div>
+    <div style="margin-top: 12px;">
+        <div style="font-size: 0.65rem; opacity: 0.8; text-transform: uppercase;">Fatura Atual</div>
+        <div style="font-weight: 700; font-size: 1.3rem;">{formatar_valor_br(fatura_cartao)}</div>
+    </div>
+    <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.75rem; opacity: 0.9;">
+        <span>📅 Venc: dia {dia_venc:02d}</span>
+        <span>Limite: {formatar_valor_br(limite)}</span>
+    </div>
+    <div style="margin-top: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; height: 6px; overflow: hidden;">
+        <div style="width: {min(percentual_usado, 100):.0f}%; height: 100%; background: rgba(255,255,255,0.8); border-radius: 4px;"></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
         # Mostrar totalizador
         st.markdown(f"""
-        <div style="text-align: right; margin-top: 10px; padding-right: 10px;">
-            <span style="color: #666; font-size: 0.9rem;">Fatura Total do Mês: </span>
-            <span style="font-weight: 700; font-size: 1.1rem; color: #d32f2f;">{formatar_valor_br(fatura_total)}</span>
-        </div>
-        """, unsafe_allow_html=True)
+<div style="text-align: right; margin-top: 10px; padding-right: 10px;">
+    <span style="color: #666; font-size: 0.9rem;">Fatura Total do Mês: </span>
+    <span style="font-weight: 700; font-size: 1.1rem; color: #d32f2f;">{formatar_valor_br(fatura_total)}</span>
+</div>
+""", unsafe_allow_html=True)
 
     # Separador se houver contas ou cartões
     if contas or cartoes:
@@ -450,77 +587,6 @@ def main():
                     st.rerun()
 
             st.sidebar.markdown("---")
-
-    # ========== CRIAR COLUNA MÊS/ANO PARA FILTRO ==========
-    df['Data'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
-    df['Mes_Ano'] = df['Data'].dt.to_period('M').astype(str)
-    df['Mes_Ano_Fmt'] = df['Mes_Ano'].apply(formatar_mes_ano_completo)
-
-    # Obter tipos e categorias únicas para os filtros
-    tipos_unicos = df['Tipo'].dropna().unique().tolist()
-    categorias_unicas = df['Categoria'].dropna().unique().tolist()
-
-    # Obter lista de meses únicos
-    meses_unicos = df[df['Mes_Ano'] != 'NaT']['Mes_Ano'].dropna().unique().tolist()
-    meses_unicos = sorted(meses_unicos, reverse=True)
-    meses_formatados = [formatar_mes_ano_completo(m) for m in meses_unicos]
-
-    # ========== SIDEBAR - FILTRO DE MÊS (VISÍVEL) ==========
-    st.sidebar.header("Período")
-
-    if meses_formatados:
-        opcoes_meses = ["Todos os meses"] + meses_formatados
-        mes_atual_sistema = datetime.now().strftime('%Y-%m')
-
-        if mes_atual_sistema in meses_unicos:
-            idx_mes_atual = meses_unicos.index(mes_atual_sistema)
-            indice_padrao = idx_mes_atual + 1
-        else:
-            indice_padrao = 1 if len(opcoes_meses) > 1 else 0
-
-        mes_selecionado_fmt = st.sidebar.selectbox(
-            "Selecione o Mês",
-            options=opcoes_meses,
-            index=indice_padrao,
-            key="filtro_mes"
-        )
-
-        if mes_selecionado_fmt == "Todos os meses":
-            mes_selecionado = None
-        else:
-            idx = meses_formatados.index(mes_selecionado_fmt)
-            mes_selecionado = meses_unicos[idx]
-    else:
-        mes_selecionado = None
-        mes_selecionado_fmt = "Todos os meses"
-
-    # ========== SIDEBAR - FILTROS AVANÇADOS (EXPANDER) ==========
-    with st.sidebar.expander("Filtros Avançados", expanded=False):
-        tipos_selecionados = st.multiselect(
-            "Tipo de Transação",
-            options=tipos_unicos,
-            default=tipos_unicos,
-            key="filtro_tipo"
-        )
-
-        categorias_selecionadas = st.multiselect(
-            "Categorias",
-            options=categorias_unicas,
-            default=categorias_unicas,
-            key="filtro_categoria"
-        )
-
-    # Aplicar filtros de tipo e categoria
-    df_filtrado = df[
-        (df['Tipo'].isin(tipos_selecionados)) &
-        (df['Categoria'].isin(categorias_selecionadas))
-    ]
-
-    # Filtrar por mês
-    if mes_selecionado is not None:
-        df_mes = df_filtrado[df_filtrado['Mes_Ano'] == mes_selecionado].copy()
-    else:
-        df_mes = df_filtrado.copy()
 
     # ========== KPIs - MÉTRICAS PRINCIPAIS ==========
     st.subheader("Resumo Financeiro")

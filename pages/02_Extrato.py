@@ -5,7 +5,6 @@ Tabela de transações com filtros e gerenciamento (editar/excluir)
 
 import streamlit as st
 import pandas as pd
-from datetime import date
 
 # Importar do módulo compartilhado
 from utils import (
@@ -16,11 +15,7 @@ from utils import (
     formatar_valor_br,
     formatar_mes_ano_completo,
     get_armazenamento,
-    carregar_dados,
-    limpar_cache_e_recarregar,
-    TIPOS_CONTA,
-    TIPOS_TRANSACAO,
-    CATEGORIAS_PADRAO
+    carregar_dados
 )
 
 # ============================================================
@@ -187,152 +182,6 @@ def main():
         )
         st.caption(f"Total: {len(df_filtrado)} registros")
 
-    # ========== GERENCIAR LANÇAMENTOS (dentro de Expander) ==========
-    with st.expander("Gerenciar Lançamentos", expanded=False):
-        if df.empty:
-            st.warning("Nenhum lançamento para gerenciar.")
-        else:
-            df_reset = df.reset_index(drop=True)
-
-            # Lista de opções para seleção (ordenar por data decrescente para mostrar mais recentes primeiro)
-            df_ordenado = df_reset.copy()
-            df_ordenado['Data'] = pd.to_datetime(df_ordenado['Data'], errors='coerce')
-            df_ordenado = df_ordenado.sort_values('Data', ascending=False).reset_index(drop=True)
-
-            opcoes_gerenciar = []
-            indices_originais = []
-            for idx, row in df_ordenado.iterrows():
-                # Guardar o índice original do DataFrame não ordenado
-                idx_original = df_reset[(df_reset['Descricao'] == row['Descricao']) &
-                                        (df_reset['Valor'] == row['Valor']) &
-                                        (df_reset['Data'] == row['Data'])].index
-                if len(idx_original) > 0:
-                    idx_original = idx_original[0]
-                else:
-                    idx_original = idx
-
-                indices_originais.append(idx_original)
-                data_fmt = row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else '—'
-                valor_fmt = formatar_valor_br(row['Valor'])
-                desc = str(row['Descricao'])[:20]
-                emoji = "+" if row['Tipo'] == 'Receita' else "-"
-                opcoes_gerenciar.append(f"{idx_original}: {emoji} {data_fmt} | {desc} | {valor_fmt}")
-
-            lancamento_selecionado = st.selectbox(
-                "Selecione o lançamento:",
-                options=opcoes_gerenciar,
-                index=0,  # Seleciona o primeiro (mais recente)
-                key="select_gerenciar",
-                label_visibility="collapsed"
-            )
-
-            if lancamento_selecionado:
-                indice_selecionado = int(lancamento_selecionado.split(":")[0])
-                lancamento = df_reset.iloc[indice_selecionado]
-
-                # ========== FORMULÁRIO DE EDIÇÃO EM GRID ==========
-                with st.form(key=f"form_editar_{indice_selecionado}"):
-
-                    # Linha 1: Data, Valor, Categoria
-                    col_e1, col_e2, col_e3 = st.columns([1, 1, 2])
-
-                    with col_e1:
-                        data_valor = lancamento['Data'].date() if pd.notna(lancamento['Data']) else date.today()
-                        edit_data = st.date_input("Data", value=data_valor, format="DD/MM/YYYY")
-
-                    with col_e2:
-                        edit_valor = st.number_input(
-                            "Valor",
-                            min_value=0.0,
-                            value=float(lancamento['Valor']),
-                            step=0.01,
-                            format="%.2f"
-                        )
-
-                    with col_e3:
-                        cat_atual = str(lancamento['Categoria'])
-                        cats_edit = sorted(set(CATEGORIAS_PADRAO + categorias_unicas + [cat_atual]))
-                        idx_cat = cats_edit.index(cat_atual) if cat_atual in cats_edit else 0
-                        edit_categoria = st.selectbox("Categoria", options=cats_edit, index=idx_cat)
-
-                    # Linha 2: Descrição
-                    edit_descricao = st.text_input("Descrição", value=str(lancamento['Descricao']))
-
-                    # Linha 3: Tipo e Conta
-                    col_e4, col_e5 = st.columns(2)
-
-                    with col_e4:
-                        tipo_atual = str(lancamento['Tipo'])
-                        idx_tipo = TIPOS_TRANSACAO.index(tipo_atual) if tipo_atual in TIPOS_TRANSACAO else 0
-                        edit_tipo = st.selectbox("Tipo", options=TIPOS_TRANSACAO, index=idx_tipo)
-
-                    with col_e5:
-                        conta_atual = str(lancamento['Conta'])
-                        conta_display = 'Conta Comum' if conta_atual == 'Comum' else conta_atual
-                        idx_conta = TIPOS_CONTA.index(conta_display) if conta_display in TIPOS_CONTA else 0
-                        edit_conta = st.selectbox("Conta", options=TIPOS_CONTA, index=idx_conta)
-
-                    # Botões lado a lado
-                    col_btn1, col_btn2 = st.columns(2)
-
-                    with col_btn1:
-                        submit_editar = st.form_submit_button(
-                            "Salvar Alterações",
-                            use_container_width=True,
-                            type="primary"
-                        )
-
-                    if submit_editar:
-                        if not edit_descricao.strip():
-                            st.error("A descrição é obrigatória!")
-                        elif edit_valor <= 0:
-                            st.error("O valor deve ser maior que zero!")
-                        else:
-                            conta_salvar = "Vale Refeição" if edit_conta == "Vale Refeição" else "Comum"
-
-                            with st.spinner("Salvando..."):
-                                sucesso, mensagem = armazenamento.editar_transacao(
-                                    indice_selecionado,
-                                    edit_data,
-                                    edit_descricao.strip(),
-                                    edit_categoria,
-                                    edit_valor,
-                                    edit_tipo,
-                                    conta_salvar
-                                )
-
-                            if sucesso:
-                                st.success(mensagem)
-                                st.cache_data.clear()
-                                st.rerun()
-                            else:
-                                st.error(mensagem)
-
-                # Botão de exclusão (fora do form)
-                st.markdown("---")
-                col_excl1, col_excl2, col_excl3 = st.columns([1, 1, 2])
-
-                with col_excl1:
-                    if st.button("Excluir Lançamento", use_container_width=True, type="secondary"):
-                        st.session_state['confirmar_exclusao'] = True
-
-                with col_excl2:
-                    if st.session_state.get('confirmar_exclusao', False):
-                        if st.button("Confirmar Exclusão", use_container_width=True, type="primary"):
-                            with st.spinner("Excluindo..."):
-                                sucesso, mensagem = armazenamento.excluir_transacao(indice_selecionado)
-
-                            if sucesso:
-                                st.success(mensagem)
-                                st.session_state['confirmar_exclusao'] = False
-                                st.cache_data.clear()
-                                st.rerun()
-                            else:
-                                st.error(mensagem)
-
-                with col_excl3:
-                    if st.session_state.get('confirmar_exclusao', False):
-                        st.warning("Esta ação não pode ser desfeita!")
 
     # ========== RODAPÉ ==========
     exibir_rodape()
