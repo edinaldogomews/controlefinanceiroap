@@ -604,9 +604,9 @@ def main():
     # ========== BOTÃO FLUTUANTE DE NOVO LANÇAMENTO ==========
     exibir_menu_lateral(armazenamento)
 
-    # Título principal
-    st.title("Visão Geral")
-    st.markdown("---")
+    # Título principal removido em favor do cabeçalho de navegação
+    # st.title("Visão Geral")
+    # st.markdown("---")
 
     # Carregar dados
     df = carregar_dados()
@@ -625,34 +625,89 @@ def main():
     meses_unicos = sorted(meses_unicos, reverse=True)
     meses_formatados = [formatar_mes_ano_completo(m) for m in meses_unicos]
 
-    # ========== SIDEBAR - FILTRO DE MÊS (VISÍVEL) ==========
-    st.sidebar.header("Período")
-
-    if meses_formatados:
-        opcoes_meses = ["Todos os meses"] + meses_formatados
+    # ========== CABEÇALHO DE NAVEGAÇÃO POR MÊS ==========
+    
+    # Inicializar estado do mês selecionado
+    if 'indice_mes_selecionado' not in st.session_state:
         mes_atual_sistema = datetime.now().strftime('%Y-%m')
-
-        if mes_atual_sistema in meses_unicos:
-            idx_mes_atual = meses_unicos.index(mes_atual_sistema)
-            indice_padrao = idx_mes_atual + 1
+        if meses_unicos and mes_atual_sistema in meses_unicos:
+            st.session_state['indice_mes_selecionado'] = meses_unicos.index(mes_atual_sistema)
         else:
-            indice_padrao = 1 if len(opcoes_meses) > 1 else 0
+            st.session_state['indice_mes_selecionado'] = 0 if meses_unicos else -1
 
-        mes_selecionado_fmt = st.sidebar.selectbox(
-            "Selecione o Mês",
-            options=opcoes_meses,
-            index=indice_padrao,
-            key="filtro_mes"
-        )
+    # Container do cabeçalho
+    with st.container():
+        # Layout: Espaço, Navegação Centralizada, Botão Configuração
+        col_esq, col_nav, col_dir = st.columns([1, 6, 1])
+        
+        with col_esq:
+            # Apenas um placeholder ou título curto se desejar
+            st.markdown("<h3 style='margin:0; padding-top:5px; color:#42a5f5;'>Somma</h3>", unsafe_allow_html=True)
 
-        if mes_selecionado_fmt == "Todos os meses":
-            mes_selecionado = None
-        else:
-            idx = meses_formatados.index(mes_selecionado_fmt)
-            mes_selecionado = meses_unicos[idx]
-    else:
-        mes_selecionado = None
-        mes_selecionado_fmt = "Todos os meses"
+        with col_nav:
+            if meses_unicos:
+                idx = st.session_state['indice_mes_selecionado']
+                
+                # Definir colunas para os controles de navegação
+                c_ant, c_texto, c_prox = st.columns([1, 4, 1])
+                
+                # Botão Anterior (Mês Passado = Índice Maior, pois está sorted reverse)
+                with c_ant:
+                    # Desabilitar se for o último da lista (mais antigo)
+                    if idx < len(meses_unicos) - 1:
+                        if st.button("❮", key="btn_mes_ant", use_container_width=True):
+                            st.session_state['indice_mes_selecionado'] += 1
+                            st.rerun()
+                    else:
+                        st.button("❮", key="btn_mes_ant_disabled", disabled=True, use_container_width=True)
+
+                # Texto do Mês
+                with c_texto:
+                    mes_atual_texto = formatar_mes_ano_completo(meses_unicos[idx])
+                    # Estilo centralizado e destacado
+                    st.markdown(
+                        f"""
+                        <div style="
+                            text-align: center;
+                            font-size: 1.5rem;
+                            font-weight: 700;
+                            color: white;
+                            padding: 5px 0;
+                            background: rgba(255,255,255,0.05);
+                            border-radius: 10px;
+                            border: 1px solid rgba(255,255,255,0.1);
+                        ">
+                            {mes_atual_texto}
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+
+                # Botão Próximo (Mês Futuro = Índice Menor)
+                with c_prox:
+                    # Desabilitar se for o primeiro da lista (mais recente)
+                    if idx > 0:
+                        if st.button("❯", key="btn_mes_prox", use_container_width=True):
+                            st.session_state['indice_mes_selecionado'] -= 1
+                            st.rerun()
+                    else:
+                        st.button("❯", key="btn_mes_prox_disabled", disabled=True, use_container_width=True)
+                
+                # Definir o mês selecionado para o resto do script
+                mes_selecionado = meses_unicos[st.session_state['indice_mes_selecionado']]
+                mes_selecionado_fmt = formatar_mes_ano_completo(mes_selecionado)
+            else:
+                st.info("Sem dados de meses.")
+                mes_selecionado = None
+                mes_selecionado_fmt = "Geral"
+
+        with col_dir:
+            # Botão de Configuração (Três pontos ou Engrenagem)
+            if st.button("⚙️", key="btn_config_header", help="Configurar Dashboard", use_container_width=True):
+                st.session_state['pagina_atual'] = 'config'
+                st.rerun()
+
+    st.markdown("---")
 
     # ========== SIDEBAR - FILTROS AVANÇADOS (EXPANDER) ==========
     with st.sidebar.expander("Filtros Avançados", expanded=False):
@@ -844,15 +899,11 @@ def main():
         except Exception as e:
             st.error(f"Erro ao renderizar componente {componente}: {e}")
 
-    # ========== RODAPÉ E BOTÃO DE CONFIGURAÇÃO ==========
+    # ========== RODAPÉ ==========
     
     st.markdown("---")
     
-    col_config, col_space = st.columns([1, 4])
-    with col_config:
-        if st.button("⚙️ Configurar Resumo", use_container_width=True):
-            st.session_state['pagina_atual'] = 'config'
-            st.rerun()
+    # Botão de configuração movido para o cabeçalho
 
     # Aviso de atualização (Sidebar)
     if st.session_state.get('update_disponivel', False):

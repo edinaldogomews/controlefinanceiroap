@@ -1,4 +1,5 @@
-Data,Descricao,Categoria,Valor,Tipo,Conta
-2026-01-04,Salário,Salário,11.0,Receita,Comum
-2026-01-04,Mercado,Supermercado,5.0,Despesa,Comum
-2026-01-04,Conta de luz,Moradia,100.0,Despesa,Cartão: Nubank
+ID,Data,Descricao,Categoria,Valor,Tipo,Conta,Status,Tags
+98c51cc4-074a-4394-b690-51b3373e26f0,2026-01-04,Salário,Salário,11.0,Receita,Carteira,Pago,
+533b7601-21da-4240-83f6-e7569407a482,2026-01-04,Mercado,Supermercado,5.0,Despesa,Carteira,Pago,
+701d5a12-2bc3-4f39-a42f-a6bf55de148c,2026-01-04,Conta de luz,Moradia,100.0,Despesa,Cartão: Nubank,Pago,
+572c0a8c-61f5-4160-94f4-7331b603193e,2026-02-02,Transferência entre contas,Moradia,1000.0,Despesa,Nubank,Pago,

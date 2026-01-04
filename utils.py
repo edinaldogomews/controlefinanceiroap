@@ -1449,7 +1449,7 @@ class ArmazenamentoHibrido:
             'Descrição': 'Descricao', 'descricao': 'Descricao', 'DESCRICAO': 'Descricao',
             'categoria': 'Categoria', 'CATEGORIA': 'Categoria',
             'valor': 'Valor', 'VALOR': 'Valor',
-            'tipo': 'Tipo', 'TIPO': 'Tipo', 'Status': 'Tipo',
+            'tipo': 'Tipo', 'TIPO': 'Tipo',
             'conta': 'Conta', 'CONTA': 'Conta'
         }
 
