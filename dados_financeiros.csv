@@ -1,2 +1,4 @@
 Data,Descricao,Categoria,Valor,Tipo,Conta
-
+2026-01-04,Salário,Salário,11.0,Receita,Comum
+2026-01-04,Mercado,Supermercado,5.0,Despesa,Comum
+2026-01-04,Conta de luz,Moradia,100.0,Despesa,Cartão: Nubank

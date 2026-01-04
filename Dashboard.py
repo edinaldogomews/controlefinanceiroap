@@ -530,26 +530,31 @@ def main():
             
             # Calcular fatura total
             # Filtrar apenas transações vinculadas a cartões (pelo nome ou prefixo)
-            nomes_cartoes = [c['nome'] for c in cartoes]
-            nomes_cartoes_prefixo = [f"Cartão: {c['nome']}" for c in cartoes]
-            todas_chaves_cartao = nomes_cartoes + nomes_cartoes_prefixo
-            
-            df_apenas_cartoes = df_mes_atual[df_mes_atual['Conta'].isin(todas_chaves_cartao)]
-            fatura_total = df_apenas_cartoes['Valor'].sum() if not df_apenas_cartoes.empty else 0.0
+            # Vamos iterar sobre todas as despesas do mês e somar apenas as que pertencem aos cartões ativos
             
             # Calcular fatura por cartão
-            if not df_apenas_cartoes.empty:
-                gastos_por_conta = df_apenas_cartoes.groupby('Conta')['Valor'].sum()
+            if not df_mes_atual.empty:
+                # Normalizar nomes para garantir match correto
+                df_mes_atual = df_mes_atual.copy()
+                df_mes_atual['Conta_Norm'] = df_mes_atual['Conta'].astype(str).str.strip()
+                
+                gastos_por_conta = df_mes_atual.groupby('Conta_Norm')['Valor'].sum()
+                
                 for nome_cartao in faturas_por_cartao.keys():
-                    prefixo_nome = f"Cartão: {nome_cartao}"
+                    nome_cartao_limpo = str(nome_cartao).strip()
+                    prefixo_nome = f"Cartão: {nome_cartao_limpo}"
                     valor_cartao = 0.0
                     
-                    if nome_cartao in gastos_por_conta:
-                        valor_cartao += gastos_por_conta[nome_cartao]
+                    # Somar lançamentos diretos (legado) e lançamentos com prefixo (novo)
+                    if nome_cartao_limpo in gastos_por_conta:
+                        valor_cartao += gastos_por_conta[nome_cartao_limpo]
                     if prefixo_nome in gastos_por_conta:
                         valor_cartao += gastos_por_conta[prefixo_nome]
                         
                     faturas_por_cartao[nome_cartao] = valor_cartao
+            
+            # Atualizar fatura total apenas com a soma dos cartões exibidos
+            fatura_total = sum(faturas_por_cartao.values())
 
         # Distribuir fatura entre cartões (proporcional ao limite) - LEGADO
         # MANTIDO APENAS COMO FALLBACK se não houver dados específicos
@@ -579,6 +584,9 @@ def main():
             soma_faturas_individuais = sum(faturas_por_cartao.values())
             if soma_faturas_individuais == 0 and fatura_total > 0 and limite_total > 0:
                  fatura_cartao = (limite / limite_total) * fatura_total
+            
+            # Limite Disponível (Limite Total - Fatura Atual)
+            limite_disponivel = max(0, limite - fatura_cartao)
 
             # Percentual usado
             percentual_usado = (fatura_cartao / limite * 100) if limite > 0 else 0
@@ -614,7 +622,7 @@ def main():
     </div>
     <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.75rem; opacity: 0.9;">
         <span>📅 Venc: dia {dia_venc:02d}</span>
-        <span>Limite: {formatar_valor_br(limite)}</span>
+        <span>Limite: {formatar_valor_br(limite_disponivel)}</span>
     </div>
     <div style="margin-top: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; height: 6px; overflow: hidden;">
         <div style="width: {min(percentual_usado, 100):.0f}%; height: 100%; background: rgba(255,255,255,0.8); border-radius: 4px;"></div>
