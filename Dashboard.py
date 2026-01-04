@@ -613,61 +613,70 @@ def main():
             st.markdown("<h3 style='margin:0; padding-top:5px; color:#42a5f5;'>Somma</h3>", unsafe_allow_html=True)
 
         with col_nav:
-            if meses_unicos:
-                idx = st.session_state['indice_mes_selecionado']
-                
-                # Definir colunas para os controles de navegação
-                c_ant, c_texto, c_prox = st.columns([1, 4, 1])
-                
-                # Botão Anterior (Mês Passado = Índice Maior, pois está sorted reverse)
-                with c_ant:
-                    # Desabilitar se for o último da lista (mais antigo)
-                    if idx < len(meses_unicos) - 1:
-                        if st.button("❮", key="btn_mes_ant", use_container_width=True):
-                            st.session_state['indice_mes_selecionado'] += 1
-                            st.rerun()
-                    else:
-                        st.button("❮", key="btn_mes_ant_disabled", disabled=True, use_container_width=True)
+            # Lógica unificada de navegação (aparece mesmo sem dados)
+            idx = st.session_state['indice_mes_selecionado']
+            tem_meses = len(meses_unicos) > 0
+            
+            # Definir texto a exibir
+            if tem_meses and 0 <= idx < len(meses_unicos):
+                mes_atual_texto = formatar_mes_ano_completo(meses_unicos[idx])
+            else:
+                # Fallback: Mês atual do sistema
+                mes_atual_texto = formatar_mes_ano_completo(datetime.now().strftime('%Y-%m'))
+            
+            # Definir colunas para os controles de navegação
+            c_ant, c_texto, c_prox = st.columns([1, 4, 1])
+            
+            # Botão Anterior (Mês Passado = Índice Maior, pois está sorted reverse)
+            with c_ant:
+                # Desabilitar se for o último da lista ou não tiver meses
+                pode_voltar = tem_meses and idx < len(meses_unicos) - 1
+                if pode_voltar:
+                    if st.button("❮", key="btn_mes_ant", use_container_width=True):
+                        st.session_state['indice_mes_selecionado'] += 1
+                        st.rerun()
+                else:
+                    st.button("❮", key="btn_mes_ant_disabled", disabled=True, use_container_width=True)
 
-                # Texto do Mês
-                with c_texto:
-                    mes_atual_texto = formatar_mes_ano_completo(meses_unicos[idx])
-                    # Estilo centralizado e destacado
-                    st.markdown(
-                        f"""
-                        <div style="
-                            text-align: center;
-                            font-size: 1.5rem;
-                            font-weight: 700;
-                            color: white;
-                            padding: 5px 0;
-                            background: rgba(255,255,255,0.05);
-                            border-radius: 10px;
-                            border: 1px solid rgba(255,255,255,0.1);
-                        ">
-                            {mes_atual_texto}
-                        </div>
-                        """, 
-                        unsafe_allow_html=True
-                    )
+            # Texto do Mês
+            with c_texto:
+                # Estilo centralizado e destacado
+                st.markdown(
+                    f"""
+                    <div style="
+                        text-align: center;
+                        font-size: 1.5rem;
+                        font-weight: 700;
+                        color: white;
+                        padding: 5px 0;
+                        background: rgba(255,255,255,0.05);
+                        border-radius: 10px;
+                        border: 1px solid rgba(255,255,255,0.1);
+                    ">
+                        {mes_atual_texto}
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
 
-                # Botão Próximo (Mês Futuro = Índice Menor)
-                with c_prox:
-                    # Desabilitar se for o primeiro da lista (mais recente)
-                    if idx > 0:
-                        if st.button("❯", key="btn_mes_prox", use_container_width=True):
-                            st.session_state['indice_mes_selecionado'] -= 1
-                            st.rerun()
-                    else:
-                        st.button("❯", key="btn_mes_prox_disabled", disabled=True, use_container_width=True)
-                
-                # Definir o mês selecionado para o resto do script
-                mes_selecionado = meses_unicos[st.session_state['indice_mes_selecionado']]
+            # Botão Próximo (Mês Futuro = Índice Menor)
+            with c_prox:
+                # Desabilitar se for o primeiro da lista ou não tiver meses
+                pode_avancar = tem_meses and idx > 0
+                if pode_avancar:
+                    if st.button("❯", key="btn_mes_prox", use_container_width=True):
+                        st.session_state['indice_mes_selecionado'] -= 1
+                        st.rerun()
+                else:
+                    st.button("❯", key="btn_mes_prox_disabled", disabled=True, use_container_width=True)
+            
+            # Definir o mês selecionado para o resto do script
+            if tem_meses and 0 <= idx < len(meses_unicos):
+                mes_selecionado = meses_unicos[idx]
                 mes_selecionado_fmt = formatar_mes_ano_completo(mes_selecionado)
             else:
-                st.info("Sem dados de meses.")
                 mes_selecionado = None
-                mes_selecionado_fmt = "Geral"
+                mes_selecionado_fmt = mes_atual_texto
 
         with col_dir:
             # Botão de Configuração (Três pontos ou Engrenagem)

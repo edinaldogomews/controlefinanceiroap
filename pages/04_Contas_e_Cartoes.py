@@ -150,7 +150,7 @@ st.markdown("""
 # DIALOGS (MODAIS)
 # ============================================================
 
-@st.dialog("✏️ Editar Conta", width="small")
+@st.dialog("Editar Conta", width="small")
 def modal_editar_conta(conta_id: int):
     """Modal para editar uma conta bancária existente."""
 
@@ -490,10 +490,10 @@ def renderizar_cartao_credito(cartao: dict):
     """, unsafe_allow_html=True)
 
     st.markdown(f"""
-    <div style="margin-top: 10px; padding: 10px 0;">
+    <div style="margin-top: 10px; padding: 10px 0; width: 100%; max-width: 380px;">
         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-            <span style="color: #666;">💳 Limite: <strong>{formatar_valor_br(limite)}</strong></span>
-            <span style="color: #666;">📅 Fecha dia <strong>{dia_fech:02d}</strong></span>
+            <span style="color: #666;">Limite: <strong>{formatar_valor_br(limite)}</strong></span>
+            <span style="color: #666;">Fecha dia <strong>{dia_fech:02d}</strong></span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -513,7 +513,7 @@ def main():
     st.caption("Gerencie suas contas bancárias e cartões de crédito")
 
     # Criar abas
-    tab_contas, tab_cartoes = st.tabs(["🏦 Minhas Contas", "💳 Meus Cartões"])
+    tab_contas, tab_cartoes = st.tabs(["Minhas Contas", "Meus Cartões"])
 
     # ========== ABA: MINHAS CONTAS ==========
     with tab_contas:
@@ -571,7 +571,7 @@ def main():
         st.markdown("### Meus Cartões de Crédito")
 
         # Botão Novo Cartão
-        if st.button("➕ Novo Cartão", type="primary", key="btn_novo_cartao"):
+        if st.button("Novo Cartão", type="primary", key="btn_novo_cartao"):
             modal_novo_cartao()
 
         st.markdown("---")
@@ -596,7 +596,7 @@ def main():
                     cartao_id = renderizar_cartao_credito(cartao)
 
                     # Botão de excluir
-                    if st.button("🗑️ Excluir", key=f"del_cartao_{cartao_id}", help="Excluir este cartão"):
+                    if st.button("Excluir", key=f"del_cartao_{cartao_id}", help="Excluir este cartão"):
                         sucesso, msg = excluir_cartao(cartao_id)
                         if sucesso:
                             st.success(msg)
