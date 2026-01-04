@@ -529,14 +529,27 @@ def main():
             ]
             
             # Calcular fatura total
-            fatura_total = df_mes_atual['Valor'].sum() if not df_mes_atual.empty else 0.0
+            # Filtrar apenas transações vinculadas a cartões (pelo nome ou prefixo)
+            nomes_cartoes = [c['nome'] for c in cartoes]
+            nomes_cartoes_prefixo = [f"Cartão: {c['nome']}" for c in cartoes]
+            todas_chaves_cartao = nomes_cartoes + nomes_cartoes_prefixo
+            
+            df_apenas_cartoes = df_mes_atual[df_mes_atual['Conta'].isin(todas_chaves_cartao)]
+            fatura_total = df_apenas_cartoes['Valor'].sum() if not df_apenas_cartoes.empty else 0.0
             
             # Calcular fatura por cartão
-            if not df_mes_atual.empty:
-                gastos_por_conta = df_mes_atual.groupby('Conta')['Valor'].sum()
+            if not df_apenas_cartoes.empty:
+                gastos_por_conta = df_apenas_cartoes.groupby('Conta')['Valor'].sum()
                 for nome_cartao in faturas_por_cartao.keys():
+                    prefixo_nome = f"Cartão: {nome_cartao}"
+                    valor_cartao = 0.0
+                    
                     if nome_cartao in gastos_por_conta:
-                        faturas_por_cartao[nome_cartao] = gastos_por_conta[nome_cartao]
+                        valor_cartao += gastos_por_conta[nome_cartao]
+                    if prefixo_nome in gastos_por_conta:
+                        valor_cartao += gastos_por_conta[prefixo_nome]
+                        
+                    faturas_por_cartao[nome_cartao] = valor_cartao
 
         # Distribuir fatura entre cartões (proporcional ao limite) - LEGADO
         # MANTIDO APENAS COMO FALLBACK se não houver dados específicos

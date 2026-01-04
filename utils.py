@@ -40,6 +40,7 @@ CAMINHO_VERSION = BASE_DIR / "version.txt"
 CAMINHO_PREFERENCIAS = BASE_DIR / "preferencias_update.csv"
 CAMINHO_CONTAS = BASE_DIR / "contas.json"
 CAMINHO_CARTOES = BASE_DIR / "cartoes.json"
+CAMINHO_FATURAS = BASE_DIR / "faturas.json"
 NOME_PLANILHA = "Controle Financeiro"
 
 # Estrutura de colunas do sistema
@@ -387,6 +388,28 @@ def aplicar_estilo_global():
 # ============================================================
 # MODAL DE GESTÃO GLOBAL (Novo Lançamento)
 # ============================================================
+# GESTÃO DE FATURAS
+# ============================================================
+def carregar_faturas() -> list:
+    """Carrega a lista de faturas do arquivo JSON."""
+    try:
+        if CAMINHO_FATURAS.exists():
+            with open(CAMINHO_FATURAS, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception:
+        return []
+
+def salvar_faturas(faturas: list) -> bool:
+    """Salva a lista de faturas no arquivo JSON."""
+    try:
+        with open(CAMINHO_FATURAS, 'w', encoding='utf-8') as f:
+            json.dump(faturas, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+# ============================================================
 @st.dialog("Gestão de Lançamentos", width="medium")
 def modal_gestao(armazenamento):
     """Modal global para adicionar, editar e excluir transações."""
@@ -413,7 +436,7 @@ def modal_gestao(armazenamento):
     for cartao in cartoes_usuario:
         nome_exibir = f"💳 {cartao['nome']} ({cartao['banco_nome']})"
         opcoes_conta.append(nome_exibir)
-        mapa_contas[nome_exibir] = cartao['nome']
+        mapa_contas[nome_exibir] = f"Cartão: {cartao['nome']}"
 
     # Se não houver contas/cartões cadastrados, usar opções padrão
     if not opcoes_conta:
