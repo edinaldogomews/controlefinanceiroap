@@ -38,13 +38,25 @@ CAMINHO_CREDENCIAIS = BASE_DIR / "credentials.json"
 CAMINHO_CSV = BASE_DIR / "dados_financeiros.csv"
 CAMINHO_VERSION = BASE_DIR / "version.txt"
 CAMINHO_PREFERENCIAS = BASE_DIR / "preferencias_update.csv"
+CAMINHO_CONTAS = BASE_DIR / "contas.json"
+CAMINHO_CARTOES = BASE_DIR / "cartoes.json"
 NOME_PLANILHA = "Controle Financeiro"
 
 # Estrutura de colunas do sistema
 COLUNAS_SISTEMA = ['Data', 'Descricao', 'Categoria', 'Valor', 'Tipo', 'Conta']
 
-# Tipos de Conta / Forma de Pagamento
+# Tipos de Conta / Forma de Pagamento (legado - manter para compatibilidade)
 TIPOS_CONTA = ['Conta Comum', 'Vale Refeição']
+
+# Tipos de Grupo de Conta (novo sistema dinâmico)
+TIPOS_GRUPO_CONTA = ['Disponível', 'Benefício']
+
+# Mapeamento legado -> novo sistema
+MAPEAMENTO_CONTA_LEGADO = {
+    'Comum': 'Disponível',
+    'Vale Refeição': 'Benefício',
+    'VR': 'Benefício'
+}
 
 # Categorias específicas para Vale Refeição (Despesa)
 CAT_VALE_REFEICAO = [
@@ -91,6 +103,146 @@ CATEGORIAS_PADRAO = CAT_DESPESA + CAT_RECEITA
 
 # Tipos de transação
 TIPOS_TRANSACAO = ['Despesa', 'Receita']
+
+# ============================================================
+# CATÁLOGO DE BANCOS (Cores e Logos)
+# ============================================================
+
+# Função para gerar logo SVG em base64
+def _gerar_logo_svg(inicial: str, cor_fundo: str, cor_texto: str = "#FFFFFF") -> str:
+    """Gera um logo SVG circular com a inicial do banco em base64."""
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+        <circle cx="25" cy="25" r="24" fill="{cor_fundo}"/>
+        <text x="25" y="32" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="{cor_texto}" text-anchor="middle">{inicial}</text>
+    </svg>'''
+    import base64
+    svg_bytes = svg.encode('utf-8')
+    b64 = base64.b64encode(svg_bytes).decode('utf-8')
+    return f"data:image/svg+xml;base64,{b64}"
+
+def _carregar_logo_local(nome_arquivo: str, fallback_inicial: str, cor_fundo: str, cor_texto: str = "#FFFFFF") -> str:
+    """Carrega um logo SVG local da pasta assets e retorna como data URL base64.
+    Se o arquivo não existir, gera um logo genérico com a inicial."""
+    import base64
+    import os
+
+    # Caminho para a pasta assets
+    pasta_assets = os.path.join(os.path.dirname(__file__), 'assets')
+    caminho_arquivo = os.path.join(pasta_assets, nome_arquivo)
+
+    if os.path.exists(caminho_arquivo):
+        try:
+            with open(caminho_arquivo, 'rb') as f:
+                conteudo = f.read()
+            b64 = base64.b64encode(conteudo).decode('utf-8')
+            # Detectar tipo de arquivo
+            if nome_arquivo.endswith('.svg'):
+                return f"data:image/svg+xml;base64,{b64}"
+            elif nome_arquivo.endswith('.png'):
+                return f"data:image/png;base64,{b64}"
+            else:
+                return f"data:image/svg+xml;base64,{b64}"
+        except:
+            pass
+
+    # Fallback: gerar logo genérico
+    return _gerar_logo_svg(fallback_inicial, cor_fundo, cor_texto)
+
+CATALOGO_BANCOS = {
+    "Nubank": {
+        "nome": "Nubank",
+        "cor_hex": "#820AD1",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _carregar_logo_local("nubank.svg", "Nu", "#820AD1")
+    },
+    "Inter": {
+        "nome": "Banco Inter",
+        "cor_hex": "#FF7A00",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _carregar_logo_local("inter.svg", "BI", "#FF7A00")
+    },
+    "Itau": {
+        "nome": "Itaú",
+        "cor_hex": "#EC7000",
+        "cor_secundaria": "#003399",
+        "logo_url": _carregar_logo_local("itau.svg", "Itaú", "#EC7000", "#003399")
+    },
+    "Bradesco": {
+        "nome": "Bradesco",
+        "cor_hex": "#CC092F",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _carregar_logo_local("bradesco.svg", "B", "#CC092F")
+    },
+    "Santander": {
+        "nome": "Santander",
+        "cor_hex": "#EC0000",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _carregar_logo_local("santander.svg", "S", "#EC0000")
+    },
+    "BancoDoBrasil": {
+        "nome": "Banco do Brasil",
+        "cor_hex": "#FFCC00",
+        "cor_secundaria": "#003882",
+        "logo_url": _carregar_logo_local("bb.svg", "BB", "#FFCC00", "#003882")
+    },
+    "Caixa": {
+        "nome": "Caixa Econômica",
+        "cor_hex": "#005CA9",
+        "cor_secundaria": "#F37021",
+        "logo_url": _carregar_logo_local("caixa.svg", "CEF", "#005CA9")
+    },
+    "C6Bank": {
+        "nome": "C6 Bank",
+        "cor_hex": "#1A1A1A",
+        "cor_secundaria": "#FFCC00",
+        "logo_url": _carregar_logo_local("c6.svg", "C6", "#1A1A1A", "#FFCC00")
+    },
+    "BTG": {
+        "nome": "BTG Pactual",
+        "cor_hex": "#001E50",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _gerar_logo_svg("BTG", "#001E50")
+    },
+    "XP": {
+        "nome": "XP Investimentos",
+        "cor_hex": "#1E1E1E",
+        "cor_secundaria": "#D4AF37",
+        "logo_url": _gerar_logo_svg("XP", "#1E1E1E", "#D4AF37")
+    },
+    "Neon": {
+        "nome": "Neon",
+        "cor_hex": "#00E5A0",
+        "cor_secundaria": "#1A1A1A",
+        "logo_url": _gerar_logo_svg("N", "#00E5A0", "#1A1A1A")
+    },
+    "PicPay": {
+        "nome": "PicPay",
+        "cor_hex": "#21C25E",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _carregar_logo_local("picpay.svg", "PP", "#21C25E")
+    },
+    "iFood": {
+        "nome": "iFood Benefícios",
+        "cor_hex": "#EA1D2C",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _carregar_logo_local("ifood.svg", "iF", "#EA1D2C")
+    },
+    "Outro": {
+        "nome": "Outro Banco",
+        "cor_hex": "#607D8B",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _gerar_logo_svg("$", "#607D8B")
+    },
+    "Dinheiro": {
+        "nome": "Dinheiro em Espécie",
+        "cor_hex": "#4CAF50",
+        "cor_secundaria": "#FFFFFF",
+        "logo_url": _gerar_logo_svg("$", "#4CAF50")
+    }
+}
+
+# Lista de bancos para selectbox
+LISTA_BANCOS = list(CATALOGO_BANCOS.keys())
 
 # Configurações de Auto-Update
 GITHUB_OWNER = "edinaldogomews"
@@ -235,7 +387,7 @@ def aplicar_estilo_global():
 # ============================================================
 # MODAL DE GESTÃO GLOBAL (Novo Lançamento)
 # ============================================================
-@st.dialog("Gestão de Lançamentos", width="large")
+@st.dialog("Gestão de Lançamentos", width="medium")
 def modal_gestao(armazenamento):
     """Modal global para adicionar, editar e excluir transações."""
     from datetime import date
@@ -243,8 +395,33 @@ def modal_gestao(armazenamento):
     # Carregar dados
     df = armazenamento.carregar_dados()
 
+    # Carregar contas e cartões do usuário
+    contas_usuario = carregar_contas()
+    cartoes_usuario = carregar_cartoes()
+
+    # Montar lista de opções de conta/cartão
+    opcoes_conta = []
+    mapa_contas = {}  # Para mapear nome exibido -> valor a salvar
+
+    # Adicionar contas bancárias
+    for conta in contas_usuario:
+        nome_exibir = f"{conta['nome']} ({conta['banco_nome']})"
+        opcoes_conta.append(nome_exibir)
+        mapa_contas[nome_exibir] = conta['nome']
+
+    # Adicionar cartões de crédito
+    for cartao in cartoes_usuario:
+        nome_exibir = f"💳 {cartao['nome']} ({cartao['banco_nome']})"
+        opcoes_conta.append(nome_exibir)
+        mapa_contas[nome_exibir] = cartao['nome']
+
+    # Se não houver contas/cartões cadastrados, usar opções padrão
+    if not opcoes_conta:
+        opcoes_conta = TIPOS_CONTA
+        mapa_contas = {c: c for c in TIPOS_CONTA}
+
     # Criar abas
-    aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "✏️ Editar", "🗑️ Excluir"])
+    aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "Editar", "🗑️ Excluir"])
 
     # ========== ABA 1: NOVA TRANSAÇÃO ==========
     with aba_nova:
@@ -255,8 +432,8 @@ def modal_gestao(armazenamento):
 
             with col1:
                 nova_conta = st.selectbox(
-                    "Conta",
-                    options=TIPOS_CONTA,
+                    "Conta/Cartão",
+                    options=opcoes_conta,
                     key="modal_conta"
                 )
 
@@ -288,10 +465,8 @@ def modal_gestao(armazenamento):
                     key="modal_valor"
                 )
 
-            # Categorias baseadas no tipo e conta
-            if nova_conta == "Vale Refeição" and novo_tipo == "Despesa":
-                categorias = CAT_VALE_REFEICAO
-            elif novo_tipo == "Receita":
+            # Categorias baseadas no tipo
+            if novo_tipo == "Receita":
                 categorias = CAT_RECEITA
             else:
                 categorias = CAT_DESPESA
@@ -320,7 +495,8 @@ def modal_gestao(armazenamento):
                 elif novo_valor is None or novo_valor <= 0:
                     st.error("O valor deve ser maior que zero!")
                 else:
-                    conta_salvar = "Vale Refeição" if nova_conta == "Vale Refeição" else "Comum"
+                    # Obter o nome real da conta/cartão para salvar
+                    conta_salvar = mapa_contas.get(nova_conta, nova_conta)
 
                     sucesso, mensagem = armazenamento.salvar_transacao(
                         nova_data,
@@ -348,7 +524,7 @@ def modal_gestao(armazenamento):
             # Pegar últimas 10 transações (mais recentes)
             df_edit = df.copy()
             df_edit['Data'] = pd.to_datetime(df_edit['Data'], errors='coerce')
-            df_edit = df_edit.sort_values('Data', ascending=False).head(10).reset_index(drop=True)
+            df_edit = df_edit.sort_values('Data', ascending=False).head(15).reset_index(drop=True)
 
             # Selecionar transação
             opcoes_edit = []
@@ -403,15 +579,17 @@ def modal_gestao(armazenamento):
                         edit_tipo = st.selectbox("Tipo", options=TIPOS_TRANSACAO, index=idx_tipo)
 
                     with col4:
+                        # Encontrar a conta atual na lista de opções
                         conta_atual = str(row_edit['Conta'])
-                        conta_display = 'Conta Comum' if conta_atual == 'Comum' else conta_atual
-                        idx_conta = TIPOS_CONTA.index(conta_display) if conta_display in TIPOS_CONTA else 0
-                        edit_conta = st.selectbox("Conta", options=TIPOS_CONTA, index=idx_conta)
+                        idx_conta = 0
+                        for i, opt in enumerate(opcoes_conta):
+                            if conta_atual in opt or mapa_contas.get(opt, '') == conta_atual:
+                                idx_conta = i
+                                break
+                        edit_conta = st.selectbox("Conta/Cartão", options=opcoes_conta, index=idx_conta)
 
                     # Categoria
-                    if edit_conta == "Vale Refeição" and edit_tipo == "Despesa":
-                        cats_edit = CAT_VALE_REFEICAO
-                    elif edit_tipo == "Receita":
+                    if edit_tipo == "Receita":
                         cats_edit = CAT_RECEITA
                     else:
                         cats_edit = CAT_DESPESA
@@ -434,7 +612,7 @@ def modal_gestao(armazenamento):
                         elif edit_valor <= 0:
                             st.error("O valor deve ser maior que zero!")
                         else:
-                            conta_salvar = "Vale Refeição" if edit_conta == "Vale Refeição" else "Comum"
+                            conta_salvar = mapa_contas.get(edit_conta, edit_conta)
 
                             sucesso, mensagem = armazenamento.editar_transacao(
                                 idx_original,
@@ -608,9 +786,10 @@ def exibir_rodape(versao_local: str = None):
     st.sidebar.markdown(
         f"""
         <div style="font-size: 0.85rem; color: #888; line-height: 1.5;">
-            <p style="margin: 3px 0;">Desenvolvido por Edinaldo Gomes</p>
             <p style="margin: 3px 0;">📧 edinaldosantos.contato@gmail.com</p>
             <p style="margin: 3px 0;">📦 Versão: {versao_local}</p>
+            <p style="margin: 3px 0;">Desenvolvido por Edinaldo Gomes</p>
+            <p style="margin: 3px 0;"> </p>
             <p style="margin: 3px 0;">© 2025 Todos os direitos reservados</p>
         </div>
         """,
@@ -619,44 +798,95 @@ def exibir_rodape(versao_local: str = None):
 
 
 def exibir_status_conexao(armazenamento):
-    """Exibe o badge de status de conexão no topo do app."""
+    """Exibe o badge de status de conexão na sidebar, abaixo do logo."""
     modo_texto, modo_tipo, is_online = armazenamento.get_modo_info()
 
     if is_online:
-        st.markdown(
+        # Status Online - Verde elegante
+        st.sidebar.markdown(
             f"""
             <div style="
-                background: linear-gradient(90deg, #d4edda, #c3e6cb);
-                border: 1px solid #28a745;
-                border-radius: 25px;
-                padding: 8px 20px;
-                display: inline-block;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                border-radius: 20px;
+                padding: 8px 16px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
                 margin-bottom: 15px;
+                box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
             ">
-                <span style="color: #155724; font-weight: 600; font-size: 0.9rem;">
-                    {modo_texto}
+                <span style="
+                    width: 8px;
+                    height: 8px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    display: inline-block;
+                    animation: pulse 2s infinite;
+                "></span>
+                <span style="color: #ffffff; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.3px;">
+                    Conectado à Nuvem
+                </span>
+            </div>
+            <style>
+                @keyframes pulse {{
+                    0%, 100% {{ opacity: 1; }}
+                    50% {{ opacity: 0.5; }}
+                }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+    elif modo_tipo == "warning":
+        # Status Offline CSV - Laranja elegante
+        st.sidebar.markdown(
+            """
+            <div style="
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                border-radius: 20px;
+                padding: 8px 16px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 15px;
+                box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+            ">
+                <span style="
+                    width: 8px;
+                    height: 8px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    display: inline-block;
+                "></span>
+                <span style="color: #ffffff; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.3px;">
+                    Modo Offline (CSV Local)
                 </span>
             </div>
             """,
             unsafe_allow_html=True
         )
     else:
-        cor_fundo = "#fff3cd" if modo_tipo == "warning" else "#f8d7da"
-        cor_borda = "#ffc107" if modo_tipo == "warning" else "#dc3545"
-        cor_texto = "#856404" if modo_tipo == "warning" else "#721c24"
-
-        st.markdown(
-            f"""
+        # Status Erro/Memória - Vermelho elegante
+        st.sidebar.markdown(
+            """
             <div style="
-                background: linear-gradient(90deg, {cor_fundo}, {cor_fundo});
-                border: 1px solid {cor_borda};
-                border-radius: 25px;
-                padding: 8px 20px;
-                display: inline-block;
+                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                border-radius: 20px;
+                padding: 8px 16px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
                 margin-bottom: 15px;
+                box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
             ">
-                <span style="color: {cor_texto}; font-weight: 600; font-size: 0.9rem;">
-                    {modo_texto}
+                <span style="
+                    width: 8px;
+                    height: 8px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    display: inline-block;
+                "></span>
+                <span style="color: #ffffff; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.3px;">
+                    Memória Temporária
                 </span>
             </div>
             """,
@@ -1353,9 +1583,9 @@ def get_armazenamento():
     return ArmazenamentoHibrido()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=5)
 def carregar_dados():
-    """Carrega dados usando o sistema híbrido com cache."""
+    """Carrega dados usando o sistema híbrido com cache curto para responsividade."""
     armazenamento = get_armazenamento()
     return armazenamento.carregar_dados()
 
@@ -1364,3 +1594,606 @@ def limpar_cache_e_recarregar():
     """Limpa o cache de dados e força recarregamento."""
     st.cache_data.clear()
     st.rerun()
+
+
+# ============================================================
+# FUNÇÕES DE PERSISTÊNCIA - CONTAS E CARTÕES
+# ============================================================
+import json
+
+def carregar_contas() -> list:
+    """Carrega lista de contas bancárias do arquivo JSON."""
+    try:
+        if CAMINHO_CONTAS.exists():
+            with open(CAMINHO_CONTAS, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception:
+        return []
+
+
+def salvar_conta(nome: str, banco_id: str, saldo_inicial: float = 0.0, tipo_grupo: str = 'Disponível') -> tuple:
+    """
+    Salva uma nova conta bancária.
+
+    Args:
+        nome: Nome personalizado da conta (ex: "Conta Principal")
+        banco_id: ID do banco no CATALOGO_BANCOS (ex: "Nubank")
+        saldo_inicial: Saldo inicial da conta
+        tipo_grupo: Tipo de grupo da conta ('Disponível' ou 'Benefício')
+
+    Returns:
+        tuple: (sucesso: bool, mensagem: str)
+    """
+    try:
+        contas = carregar_contas()
+
+        # Verificar duplicata
+        for conta in contas:
+            if conta['nome'].lower() == nome.lower():
+                return False, "Já existe uma conta com esse nome."
+
+        # Validar tipo_grupo
+        if tipo_grupo not in TIPOS_GRUPO_CONTA:
+            tipo_grupo = 'Disponível'
+
+        # Tratar saldo_inicial None como 0.0
+        if saldo_inicial is None:
+            saldo_inicial = 0.0
+
+        # Obter dados do banco
+        banco_info = CATALOGO_BANCOS.get(banco_id, CATALOGO_BANCOS['Outro'])
+
+        nova_conta = {
+            'id': len(contas) + 1,
+            'nome': nome,
+            'banco_id': banco_id,
+            'banco_nome': banco_info['nome'],
+            'cor_hex': banco_info['cor_hex'],
+            'cor_secundaria': banco_info['cor_secundaria'],
+            'logo_url': banco_info['logo_url'],
+            'saldo_inicial': saldo_inicial,
+            'tipo_grupo': tipo_grupo,
+            'data_criacao': datetime.now().isoformat()
+        }
+
+        contas.append(nova_conta)
+
+        with open(CAMINHO_CONTAS, 'w', encoding='utf-8') as f:
+            json.dump(contas, f, ensure_ascii=False, indent=2)
+
+        return True, f"Conta '{nome}' criada com sucesso!"
+
+    except Exception as e:
+        return False, f"Erro ao salvar conta: {str(e)}"
+
+
+def excluir_conta(conta_id: int) -> tuple:
+    """Exclui uma conta pelo ID."""
+    try:
+        contas = carregar_contas()
+        contas = [c for c in contas if c['id'] != conta_id]
+
+        with open(CAMINHO_CONTAS, 'w', encoding='utf-8') as f:
+            json.dump(contas, f, ensure_ascii=False, indent=2)
+
+        return True, "Conta excluída com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao excluir conta: {str(e)}"
+
+
+def editar_conta(conta_id: int, nome: str = None, saldo_inicial: float = None, tipo_grupo: str = None) -> tuple:
+    """
+    Edita uma conta bancária existente.
+
+    Args:
+        conta_id: ID da conta a ser editada
+        nome: Novo nome da conta (opcional)
+        saldo_inicial: Novo saldo inicial (opcional)
+        tipo_grupo: Novo tipo de grupo (opcional)
+
+    Returns:
+        tuple: (sucesso: bool, mensagem: str)
+    """
+    try:
+        contas = carregar_contas()
+        conta_encontrada = False
+
+        for conta in contas:
+            if conta['id'] == conta_id:
+                conta_encontrada = True
+
+                # Atualizar apenas os campos fornecidos
+                if nome is not None and nome.strip():
+                    # Verificar duplicata de nome (exceto a própria conta)
+                    for outra in contas:
+                        if outra['id'] != conta_id and outra['nome'].lower() == nome.lower():
+                            return False, "Já existe outra conta com esse nome."
+                    conta['nome'] = nome.strip()
+
+                if saldo_inicial is not None:
+                    conta['saldo_inicial'] = saldo_inicial
+
+                if tipo_grupo is not None and tipo_grupo in TIPOS_GRUPO_CONTA:
+                    conta['tipo_grupo'] = tipo_grupo
+
+                break
+
+        if not conta_encontrada:
+            return False, "Conta não encontrada."
+
+        with open(CAMINHO_CONTAS, 'w', encoding='utf-8') as f:
+            json.dump(contas, f, ensure_ascii=False, indent=2)
+
+        return True, "Conta atualizada com sucesso!"
+
+    except Exception as e:
+        return False, f"Erro ao editar conta: {str(e)}"
+
+
+def obter_conta_por_id(conta_id: int) -> dict:
+    """Retorna uma conta pelo ID."""
+    contas = carregar_contas()
+    for conta in contas:
+        if conta['id'] == conta_id:
+            return conta
+    return None
+
+
+def carregar_cartoes() -> list:
+    """Carrega lista de cartões de crédito do arquivo JSON."""
+    try:
+        if CAMINHO_CARTOES.exists():
+            with open(CAMINHO_CARTOES, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception:
+        return []
+
+
+def salvar_cartao(nome: str, banco_id: str, limite: float, dia_fechamento: int, dia_vencimento: int) -> tuple:
+    """
+    Salva um novo cartão de crédito.
+
+    Args:
+        nome: Nome do cartão (ex: "Nubank Platinum")
+        banco_id: ID do banco no CATALOGO_BANCOS
+        limite: Limite total do cartão
+        dia_fechamento: Dia do fechamento da fatura (1-31)
+        dia_vencimento: Dia do vencimento da fatura (1-31)
+
+    Returns:
+        tuple: (sucesso: bool, mensagem: str)
+    """
+    try:
+        cartoes = carregar_cartoes()
+
+        # Verificar duplicata
+        for cartao in cartoes:
+            if cartao['nome'].lower() == nome.lower():
+                return False, "Já existe um cartão com esse nome."
+
+        # Validar dias
+        if not (1 <= dia_fechamento <= 31):
+            return False, "Dia de fechamento deve ser entre 1 e 31."
+        if not (1 <= dia_vencimento <= 31):
+            return False, "Dia de vencimento deve ser entre 1 e 31."
+
+        # Obter dados do banco
+        banco_info = CATALOGO_BANCOS.get(banco_id, CATALOGO_BANCOS['Outro'])
+
+        novo_cartao = {
+            'id': len(cartoes) + 1,
+            'nome': nome,
+            'banco_id': banco_id,
+            'banco_nome': banco_info['nome'],
+            'cor_hex': banco_info['cor_hex'],
+            'cor_secundaria': banco_info['cor_secundaria'],
+            'logo_url': banco_info['logo_url'],
+            'limite': limite,
+            'dia_fechamento': dia_fechamento,
+            'dia_vencimento': dia_vencimento,
+            'data_criacao': datetime.now().isoformat()
+        }
+
+        cartoes.append(novo_cartao)
+
+        with open(CAMINHO_CARTOES, 'w', encoding='utf-8') as f:
+            json.dump(cartoes, f, ensure_ascii=False, indent=2)
+
+        return True, f"Cartão '{nome}' criado com sucesso!"
+
+    except Exception as e:
+        return False, f"Erro ao salvar cartão: {str(e)}"
+
+
+def excluir_cartao(cartao_id: int) -> tuple:
+    """Exclui um cartão pelo ID."""
+    try:
+        cartoes = carregar_cartoes()
+        cartoes = [c for c in cartoes if c['id'] != cartao_id]
+
+        with open(CAMINHO_CARTOES, 'w', encoding='utf-8') as f:
+            json.dump(cartoes, f, ensure_ascii=False, indent=2)
+
+        return True, "Cartão excluído com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao excluir cartão: {str(e)}"
+
+
+def obter_banco_info(banco_id: str) -> dict:
+    """Retorna informações de um banco pelo ID."""
+    return CATALOGO_BANCOS.get(banco_id, CATALOGO_BANCOS['Outro'])
+
+
+# ============================================================
+# FUNÇÕES AUXILIARES PARA CONTAS DINÂMICAS
+# ============================================================
+
+def obter_contas_por_tipo(tipo_grupo: str) -> list:
+    """
+    Retorna lista de nomes de contas filtradas por tipo_grupo.
+
+    Args:
+        tipo_grupo: 'Disponível' ou 'Benefício'
+
+    Returns:
+        Lista de nomes de contas do tipo especificado
+    """
+    contas = carregar_contas()
+    return [c['nome'] for c in contas if c.get('tipo_grupo', 'Disponível') == tipo_grupo]
+
+
+def obter_lista_contas_disponiveis() -> list:
+    """
+    Retorna lista de nomes de contas do tipo 'Disponível' (Dinheiro/Banco).
+    Inclui mapeamento legado para 'Comum'.
+    """
+    contas = obter_contas_por_tipo('Disponível')
+    # Adicionar conta legada 'Comum' se não houver contas cadastradas
+    if not contas:
+        contas = ['Comum']
+    return contas
+
+
+def obter_lista_contas_beneficio() -> list:
+    """
+    Retorna lista de nomes de contas do tipo 'Benefício' (VR/VA).
+    Inclui mapeamento legado para 'Vale Refeição'.
+    """
+    contas = obter_contas_por_tipo('Benefício')
+    # Adicionar conta legada 'Vale Refeição' se não houver contas cadastradas
+    if not contas:
+        contas = ['Vale Refeição']
+    return contas
+
+
+def obter_tipo_grupo_conta(nome_conta: str) -> str:
+    """
+    Retorna o tipo_grupo de uma conta pelo nome.
+    Suporta mapeamento legado ('Comum' -> 'Disponível', 'Vale Refeição' -> 'Benefício').
+
+    Args:
+        nome_conta: Nome da conta
+
+    Returns:
+        'Disponível' ou 'Benefício'
+    """
+    # Verificar mapeamento legado primeiro
+    if nome_conta in MAPEAMENTO_CONTA_LEGADO:
+        return MAPEAMENTO_CONTA_LEGADO[nome_conta]
+
+    # Buscar nas contas cadastradas
+    contas = carregar_contas()
+    for conta in contas:
+        if conta['nome'] == nome_conta:
+            return conta.get('tipo_grupo', 'Disponível')
+
+    # Padrão: Disponível
+    return 'Disponível'
+
+
+def obter_todas_contas_para_filtro() -> dict:
+    """
+    Retorna um dicionário com listas de contas para uso em filtros.
+    Combina contas cadastradas + legado para compatibilidade.
+
+    Returns:
+        dict com:
+            - 'disponiveis': lista de nomes de contas disponíveis
+            - 'beneficios': lista de nomes de contas benefício
+            - 'todas': lista de todos os nomes de contas
+    """
+    contas = carregar_contas()
+
+    disponiveis = []
+    beneficios = []
+
+    for conta in contas:
+        tipo = conta.get('tipo_grupo', 'Disponível')
+        if tipo == 'Disponível':
+            disponiveis.append(conta['nome'])
+        else:
+            beneficios.append(conta['nome'])
+
+    # Adicionar contas legadas para compatibilidade com dados antigos
+    if 'Comum' not in disponiveis:
+        disponiveis.append('Comum')
+    if 'Vale Refeição' not in beneficios:
+        beneficios.append('Vale Refeição')
+
+    return {
+        'disponiveis': disponiveis,
+        'beneficios': beneficios,
+        'todas': disponiveis + beneficios
+    }
+
+
+def calcular_saldos_dinamico(df: pd.DataFrame) -> dict:
+    """
+    Calcula saldos separados por tipo de grupo de conta (Disponível vs Benefício).
+    Versão atualizada que suporta contas dinâmicas.
+
+    Args:
+        df: DataFrame com transações
+
+    Returns:
+        dict com: saldo_disponivel, saldo_beneficio, receitas_disponivel, despesas_disponivel,
+                  receitas_beneficio, despesas_beneficio, tem_transacoes_beneficio, mostrar_card_beneficio
+    """
+    # Obter listas de contas por tipo
+    info_contas = obter_todas_contas_para_filtro()
+    contas_disponiveis = info_contas['disponiveis']
+    contas_beneficio = info_contas['beneficios']
+
+    # Saldo Contas Disponíveis (Banco/Dinheiro)
+    df_disponivel = df[df['Conta'].isin(contas_disponiveis)]
+    receitas_disponivel = df_disponivel[df_disponivel['Tipo'] == 'Receita']['Valor'].sum()
+    despesas_disponivel = df_disponivel[df_disponivel['Tipo'] == 'Despesa']['Valor'].sum()
+    saldo_disponivel = receitas_disponivel - despesas_disponivel
+
+    # Saldo Contas Benefício (VR/VA)
+    df_beneficio = df[df['Conta'].isin(contas_beneficio)]
+    receitas_beneficio = df_beneficio[df_beneficio['Tipo'] == 'Receita']['Valor'].sum()
+    despesas_beneficio = df_beneficio[df_beneficio['Tipo'] == 'Despesa']['Valor'].sum()
+    saldo_beneficio = receitas_beneficio - despesas_beneficio
+
+    # Verificar se deve mostrar card de benefício
+    tem_transacoes_beneficio = len(df_beneficio) > 0
+    mostrar_card_beneficio = tem_transacoes_beneficio or saldo_beneficio != 0
+
+    return {
+        'saldo_disponivel': saldo_disponivel,
+        'saldo_beneficio': saldo_beneficio,
+        'receitas_disponivel': receitas_disponivel,
+        'despesas_disponivel': despesas_disponivel,
+        'receitas_beneficio': receitas_beneficio,
+        'despesas_beneficio': despesas_beneficio,
+        'tem_transacoes_beneficio': tem_transacoes_beneficio,
+        'mostrar_card_beneficio': mostrar_card_beneficio,
+        # Aliases para compatibilidade com código legado
+        'saldo_comum': saldo_disponivel,
+        'saldo_vr': saldo_beneficio,
+        'receitas_comum': receitas_disponivel,
+        'despesas_comum': despesas_disponivel,
+        'receitas_vr': receitas_beneficio,
+        'despesas_vr': despesas_beneficio,
+        'tem_transacoes_vr': tem_transacoes_beneficio,
+        'mostrar_card_vr': mostrar_card_beneficio
+    }
+
+
+def calcular_saldo_anterior_dinamico(df: pd.DataFrame, tipo_grupo: str, data_inicio_mes) -> float:
+    """
+    Calcula o saldo acumulado de um grupo de contas (Disponível ou Benefício)
+    considerando SALDO INICIAL das contas + transações anteriores a uma data.
+
+    Args:
+        df: DataFrame com transações
+        tipo_grupo: 'Disponível' ou 'Benefício'
+        data_inicio_mes: Data limite (transações anteriores a esta data)
+
+    Returns:
+        Saldo = Soma(Saldos Iniciais) + Soma(Receitas anteriores) - Soma(Despesas anteriores)
+    """
+    # Obter saldo inicial das contas do tipo especificado
+    saldo_inicial_total = obter_soma_saldos_iniciais_por_tipo(tipo_grupo)
+
+    if df.empty:
+        return saldo_inicial_total
+
+    # Obter lista de contas do tipo
+    info_contas = obter_todas_contas_para_filtro()
+    if tipo_grupo == 'Disponível':
+        lista_contas = info_contas['disponiveis']
+    else:
+        lista_contas = info_contas['beneficios']
+
+    df_anterior = df[
+        (df['Conta'].isin(lista_contas)) &
+        (df['Data'].dt.date < data_inicio_mes)
+    ].copy()
+
+    if df_anterior.empty:
+        return saldo_inicial_total
+
+    receitas = df_anterior[df_anterior['Tipo'] == 'Receita']['Valor'].sum()
+    despesas = df_anterior[df_anterior['Tipo'] == 'Despesa']['Valor'].sum()
+
+    return saldo_inicial_total + receitas - despesas
+
+
+# ============================================================
+# NOVAS FUNÇÕES: CÁLCULO DE SALDOS COM SALDO INICIAL (Cold Start)
+# ============================================================
+
+def obter_soma_saldos_iniciais_por_tipo(tipo_grupo: str) -> float:
+    """
+    Retorna a soma dos saldos iniciais de todas as contas de um tipo.
+
+    Args:
+        tipo_grupo: 'Disponível' ou 'Benefício'
+
+    Returns:
+        Soma dos saldos iniciais das contas do tipo especificado
+    """
+    contas = carregar_contas()
+    total = 0.0
+
+    for conta in contas:
+        if conta.get('tipo_grupo', 'Disponível') == tipo_grupo:
+            total += conta.get('saldo_inicial', 0.0)
+
+    return total
+
+
+def calcular_saldos_atuais() -> dict:
+    """
+    Calcula o saldo atual de TODAS as contas cadastradas.
+
+    Lógica para cada conta:
+        Saldo Atual = Saldo Inicial (do cadastro) + Total Entradas - Total Saídas
+
+    Returns:
+        dict com:
+            - 'contas': lista de dicts {'nome': str, 'saldo_atual': float, 'tipo_grupo': str, 'conta_info': dict}
+            - 'total_disponivel': float (soma saldos de contas Disponível)
+            - 'total_beneficio': float (soma saldos de contas Benefício)
+            - 'total_geral': float (soma de todos os saldos)
+    """
+    contas = carregar_contas()
+    df = carregar_dados()
+
+    resultado_contas = []
+    total_disponivel = 0.0
+    total_beneficio = 0.0
+
+    for conta in contas:
+        nome_conta = conta['nome']
+        saldo_inicial = conta.get('saldo_inicial', 0.0)
+        tipo_grupo = conta.get('tipo_grupo', 'Disponível')
+
+        # Calcular entradas e saídas dessa conta específica
+        if df.empty:
+            entradas = 0.0
+            saidas = 0.0
+        else:
+            df_conta = df[df['Conta'] == nome_conta]
+            entradas = df_conta[df_conta['Tipo'] == 'Receita']['Valor'].sum()
+            saidas = df_conta[df_conta['Tipo'] == 'Despesa']['Valor'].sum()
+
+        saldo_atual = saldo_inicial + entradas - saidas
+
+        resultado_contas.append({
+            'nome': nome_conta,
+            'saldo_atual': saldo_atual,
+            'tipo_grupo': tipo_grupo,
+            'saldo_inicial': saldo_inicial,
+            'entradas': entradas,
+            'saidas': saidas,
+            'conta_info': conta  # Dados completos da conta (cor, logo, etc.)
+        })
+
+        # Acumular por tipo
+        if tipo_grupo == 'Disponível':
+            total_disponivel += saldo_atual
+        else:
+            total_beneficio += saldo_atual
+
+    return {
+        'contas': resultado_contas,
+        'total_disponivel': total_disponivel,
+        'total_beneficio': total_beneficio,
+        'total_geral': total_disponivel + total_beneficio
+    }
+
+
+def obter_saldo_total_disponivel() -> float:
+    """
+    Retorna o saldo total de todas as contas do tipo 'Disponível'.
+    Considera Saldo Inicial + Transações.
+
+    Returns:
+        float: Saldo total disponível
+    """
+    saldos = calcular_saldos_atuais()
+    return saldos['total_disponivel']
+
+
+def obter_saldo_total_beneficios() -> float:
+    """
+    Retorna o saldo total de todas as contas do tipo 'Benefício' (VR, VA, etc).
+    Considera Saldo Inicial + Transações.
+
+    Returns:
+        float: Saldo total de benefícios
+    """
+    saldos = calcular_saldos_atuais()
+    return saldos['total_beneficio']
+
+
+def obter_saldo_conta(nome_conta: str) -> float:
+    """
+    Retorna o saldo atual de uma conta específica.
+
+    Args:
+        nome_conta: Nome da conta
+
+    Returns:
+        float: Saldo atual da conta (Saldo Inicial + Entradas - Saídas)
+    """
+    saldos = calcular_saldos_atuais()
+
+    for conta in saldos['contas']:
+        if conta['nome'] == nome_conta:
+            return conta['saldo_atual']
+
+    return 0.0
+
+
+def calcular_saldo_anterior_com_inicial(df: pd.DataFrame, tipo_grupo: str, data_inicio_mes) -> float:
+    """
+    Calcula o saldo acumulado até uma data específica, incluindo Saldo Inicial.
+
+    Nova lógica para Previsibilidade:
+        Saldo Anterior = Soma(Saldos Iniciais do tipo) + Soma(Transações anteriores ao mês)
+
+    Args:
+        df: DataFrame com transações
+        tipo_grupo: 'Disponível' ou 'Benefício'
+        data_inicio_mes: Data de início do mês (primeiro dia)
+
+    Returns:
+        float: Saldo acumulado até o dia anterior ao mês selecionado
+    """
+    # 1. Obter soma dos saldos iniciais das contas do tipo
+    saldo_inicial_total = obter_soma_saldos_iniciais_por_tipo(tipo_grupo)
+
+    # 2. Se não há transações, retorna apenas o saldo inicial
+    if df.empty:
+        return saldo_inicial_total
+
+    # 3. Obter lista de contas do tipo (incluindo legado)
+    info_contas = obter_todas_contas_para_filtro()
+    if tipo_grupo == 'Disponível':
+        lista_contas = info_contas['disponiveis']
+    else:
+        lista_contas = info_contas['beneficios']
+
+    # 4. Filtrar transações anteriores ao mês
+    df_temp = df.copy()
+    df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+
+    df_anterior = df_temp[
+        (df_temp['Conta'].isin(lista_contas)) &
+        (df_temp['Data'].dt.date < data_inicio_mes)
+    ]
+
+    if df_anterior.empty:
+        return saldo_inicial_total
+
+    # 5. Calcular receitas e despesas anteriores
+    receitas = df_anterior[df_anterior['Tipo'] == 'Receita']['Valor'].sum()
+    despesas = df_anterior[df_anterior['Tipo'] == 'Despesa']['Valor'].sum()
+
+    return saldo_inicial_total + receitas - despesas

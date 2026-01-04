@@ -27,7 +27,18 @@ from utils import (
     resetar_preferencias_update,
     REQUESTS_DISPONIVEL,
     TIPOS_TRANSACAO,
-    CATEGORIAS_PADRAO
+    CATEGORIAS_PADRAO,
+    # Novas importações para Contas e Cartões
+    carregar_contas,
+    carregar_cartoes,
+    CATALOGO_BANCOS,
+    editar_conta,
+    obter_conta_por_id,
+    TIPOS_GRUPO_CONTA,
+    # NOVAS FUNÇÕES para Cold Start
+    calcular_saldos_atuais,
+    obter_saldo_total_disponivel,
+    obter_saldo_total_beneficios
 )
 
 # ============================================================
@@ -47,6 +58,49 @@ st.set_page_config(
 
 # Aplicar estilo global
 aplicar_estilo_global()
+
+
+# ============================================================
+# MODAL DE EDIÇÃO DE CONTA (DASHBOARD)
+# ============================================================
+@st.dialog("Editar Conta", width="small")
+def modal_editar_conta_dashboard(conta_id: int):
+    """Modal para editar saldo de uma conta diretamente do Dashboard."""
+
+    conta = obter_conta_por_id(conta_id)
+    if not conta:
+        st.error("Conta não encontrada!")
+        return
+
+    st.markdown(f"### {conta['nome']}")
+    st.caption(conta['banco_nome'])
+
+    novo_saldo = st.number_input(
+        "Saldo Atual (R$)",
+        min_value=0.0,
+        value=float(conta['saldo_inicial']),
+        step=0.01,
+        format="%.2f",
+        key="dash_edit_saldo"
+    )
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+
+    with col2:
+        if st.button("Salvar", type="primary", use_container_width=True):
+            sucesso, msg = editar_conta(conta_id, saldo_inicial=novo_saldo)
+            if sucesso:
+                st.success(msg)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(msg)
 
 
 # ============================================================
@@ -87,16 +141,239 @@ def main():
     # Carregar dados
     df = carregar_dados()
 
-    # Verificar se o DataFrame está vazio
+    # ========== SEÇÃO: MINHAS CONTAS E CARTÕES ==========
+    contas = carregar_contas()
+    cartoes = carregar_cartoes()
+
+    # ========== CALCULAR SALDOS ATUAIS (COM SALDO INICIAL - COLD START) ==========
+    saldos_info = calcular_saldos_atuais()
+
+    # Mostrar seções de contas
+    if contas:
+        # ========== SEÇÃO: MINHAS CONTAS ==========
+        st.subheader("Minhas Contas")
+
+        # Usar o saldo calculado (inclui Saldo Inicial + Transações)
+        saldo_total_contas = saldos_info['total_geral']
+
+        # Criar mapa de saldos atuais para acesso rápido
+        mapa_saldos = {c['nome']: c['saldo_atual'] for c in saldos_info['contas']}
+
+        # Exibir cards horizontalmente
+        num_contas = len(contas)
+        cols_contas = st.columns(min(num_contas, 4))
+
+        for idx, conta in enumerate(contas[:4]):  # Máximo 4 cards
+            cor = conta['cor_hex']
+            cor_sec = conta.get('cor_secundaria', '#FFFFFF')
+            logo = conta.get('logo_url', '')
+            nome = conta['nome']
+            banco_nome = conta['banco_nome']
+            conta_id = conta['id']
+
+            # USAR SALDO CALCULADO (Saldo Inicial + Transações)
+            saldo = mapa_saldos.get(nome, conta.get('saldo_inicial', 0.0))
+
+            # Logo HTML
+            if logo:
+                logo_html = f'<img src="{logo}" style="width: 35px; height: 35px; object-fit: contain; filter: brightness(0) invert(1);">'
+            else:
+                logo_html = f'<div style="width: 35px; height: 35px; background: rgba(255,255,255,0.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem;">{banco_nome[0]}</div>'
+
+            with cols_contas[idx % len(cols_contas)]:
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, {cor}, {cor}DD);
+                    border-radius: 12px;
+                    padding: 18px;
+                    color: white;
+                    box-shadow: 0 4px 15px {cor}40;
+                    min-height: 120px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 1rem;">{nome}</div>
+                            <div style="font-size: 0.75rem; opacity: 0.85;">{banco_nome}</div>
+                        </div>
+                        {logo_html}
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <div style="font-size: 0.7rem; opacity: 0.8; text-transform: uppercase;">Saldo Atual</div>
+                        <div style="font-weight: 700; font-size: 1.4rem;">{formatar_valor_br(saldo)}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Botão de editar discreto abaixo do card
+                if st.button("Editar saldo", key=f"dash_edit_{conta_id}", help="Editar saldo desta conta", type="secondary"):
+                    modal_editar_conta_dashboard(conta_id)
+
+        # Mostrar totalizador por tipo
+        col_total1, col_total2 = st.columns(2)
+
+        with col_total1:
+            st.markdown(f"""
+            <div style="text-align: left; margin-top: 10px; padding-left: 10px;">
+                <span style="color: #666; font-size: 0.85rem;">Disponível: </span>
+                <span style="font-weight: 700; font-size: 1rem; color: #2e7d32;">{formatar_valor_br(saldos_info['total_disponivel'])}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_total2:
+            if saldos_info['total_beneficio'] > 0:
+                st.markdown(f"""
+                <div style="text-align: left; margin-top: 10px;">
+                    <span style="color: #666; font-size: 0.85rem;">Benefícios: </span>
+                    <span style="font-weight: 700; font-size: 1rem; color: #1565c0;">{formatar_valor_br(saldos_info['total_beneficio'])}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # Total geral
+        st.markdown(f"""
+        <div style="text-align: right; margin-top: 5px; padding-right: 10px;">
+            <span style="color: #666; font-size: 0.9rem;">Saldo Total: </span>
+            <span style="font-weight: 700; font-size: 1.1rem; color: #2e7d32;">{formatar_valor_br(saldo_total_contas)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # ========== SEÇÃO: MEUS CARTÕES ==========
+    if cartoes:
+        st.subheader("Meus Cartões")
+
+        # Calcular fatura total (despesas do mês)
+        fatura_total = 0.0
+        if not df.empty:
+            df_temp = df.copy()
+            df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+            mes_atual = datetime.now().month
+            ano_atual = datetime.now().year
+            df_mes_atual = df_temp[
+                (df_temp['Data'].dt.month == mes_atual) &
+                (df_temp['Data'].dt.year == ano_atual) &
+                (df_temp['Tipo'] == 'Despesa')
+            ]
+            fatura_total = df_mes_atual['Valor'].sum() if not df_mes_atual.empty else 0.0
+
+        # Distribuir fatura entre cartões (proporcional ao limite)
+        limite_total = sum(c['limite'] for c in cartoes)
+
+        # Exibir cards horizontalmente
+        num_cartoes = len(cartoes)
+        cols_cartoes = st.columns(min(num_cartoes, 4))
+
+        for idx, cartao in enumerate(cartoes[:4]):  # Máximo 4 cards
+            cor = cartao['cor_hex']
+            cor_sec = cartao.get('cor_secundaria', '#FFFFFF')
+            logo = cartao.get('logo_url', '')
+            nome = cartao['nome']
+            limite = cartao['limite']
+            dia_venc = cartao['dia_vencimento']
+            dia_fech = cartao['dia_fechamento']
+
+            # Calcular fatura proporcional ao limite
+            if limite_total > 0:
+                fatura_cartao = (limite / limite_total) * fatura_total
+            else:
+                fatura_cartao = 0.0
+
+            # Percentual usado
+            percentual_usado = (fatura_cartao / limite * 100) if limite > 0 else 0
+
+            # Logo HTML
+            if logo:
+                logo_html = f'<img src="{logo}" style="width: 30px; height: 30px; object-fit: contain; filter: brightness(0) invert(1); opacity: 0.9;">'
+            else:
+                logo_html = ''
+
+            with cols_cartoes[idx % len(cols_cartoes)]:
+                st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, {cor}, {cor}CC);
+                    border-radius: 14px;
+                    padding: 18px;
+                    color: white;
+                    box-shadow: 0 6px 20px {cor}50;
+                    min-height: 140px;
+                    position: relative;
+                    overflow: hidden;
+                ">
+                    <div style="position: absolute; top: -20px; right: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="font-weight: 700; font-size: 0.95rem;">{nome}</div>
+                        {logo_html}
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <div style="font-size: 0.65rem; opacity: 0.8; text-transform: uppercase;">Fatura Atual</div>
+                        <div style="font-weight: 700; font-size: 1.3rem;">{formatar_valor_br(fatura_cartao)}</div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.75rem; opacity: 0.9;">
+                        <span>📅 Venc: dia {dia_venc:02d}</span>
+                        <span>Limite: {formatar_valor_br(limite)}</span>
+                    </div>
+                    <div style="margin-top: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; height: 6px; overflow: hidden;">
+                        <div style="width: {min(percentual_usado, 100):.0f}%; height: 100%; background: rgba(255,255,255,0.8); border-radius: 4px;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # Mostrar totalizador
+        st.markdown(f"""
+        <div style="text-align: right; margin-top: 10px; padding-right: 10px;">
+            <span style="color: #666; font-size: 0.9rem;">Fatura Total do Mês: </span>
+            <span style="font-weight: 700; font-size: 1.1rem; color: #d32f2f;">{formatar_valor_br(fatura_total)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Separador se houver contas ou cartões
+    if contas or cartoes:
+        st.markdown("---")
+    else:
+        # Nenhuma conta ou cartão cadastrado - mostrar botão para cadastrar
+        st.info("Você ainda não cadastrou contas ou cartões. Configure-os para ter uma visão completa.")
+        if st.button("Cadastrar Contas e Cartões", type="secondary"):
+            st.switch_page("pages/04_Contas_e_Cartoes.py")
+        st.markdown("---")
+
+    # ========== VERIFICAR SE HÁ TRANSAÇÕES ==========
+    # Mesmo sem transações, mostrar resumo se houver contas cadastradas
     if df.empty:
-        st.warning("Nenhum registro encontrado.")
-        st.info("Acesse a página **Registrar** no menu lateral para adicionar sua primeira transação!")
+        if contas:
+            # Mostrar resumo mesmo sem transações (Cold Start)
+            st.subheader("Resumo Financeiro")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(
+                    label="Saldo Disponível",
+                    value=formatar_valor_br(saldos_info['total_disponivel']),
+                    help="Soma dos saldos de todas as suas contas bancárias"
+                )
+
+            with col2:
+                st.metric(
+                    label="Saldo Benefícios",
+                    value=formatar_valor_br(saldos_info['total_beneficio']),
+                    help="Soma dos saldos de VR, VA e outros benefícios"
+                )
+
+            with col3:
+                st.metric(
+                    label="Patrimônio Total",
+                    value=formatar_valor_br(saldos_info['total_geral']),
+                    help="Soma de todas as suas contas"
+                )
+
+            st.markdown("---")
+            st.info("📝 Você ainda não possui transações registradas. Clique no botão **+** para adicionar sua primeira transação!")
+        else:
+            st.warning("Nenhum registro encontrado.")
+            st.info("Acesse a página **Contas e Cartões** para cadastrar suas contas, ou clique no botão **+** para adicionar uma transação!")
+
         exibir_rodape(auto_update.versao_local)
         st.stop()
-
-    # Obter tipos e categorias únicos
-    tipos_unicos = df['Tipo'].unique().tolist()
-    categorias_unicas = df['Categoria'].unique().tolist()
 
     # ========== SIDEBAR - AVISO DE ATUALIZAÇÃO ==========
     if st.session_state.get('update_disponivel', False):
@@ -178,6 +455,10 @@ def main():
     df['Data'] = pd.to_datetime(df['Data'], dayfirst=True, errors='coerce')
     df['Mes_Ano'] = df['Data'].dt.to_period('M').astype(str)
     df['Mes_Ano_Fmt'] = df['Mes_Ano'].apply(formatar_mes_ano_completo)
+
+    # Obter tipos e categorias únicas para os filtros
+    tipos_unicos = df['Tipo'].dropna().unique().tolist()
+    categorias_unicas = df['Categoria'].dropna().unique().tolist()
 
     # Obter lista de meses únicos
     meses_unicos = df[df['Mes_Ano'] != 'NaT']['Mes_Ano'].dropna().unique().tolist()
