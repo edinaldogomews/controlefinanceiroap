@@ -258,7 +258,7 @@ def main():
     data_hoje = date.today()
 
     # ========== SIDEBAR - SELEÇÃO DE MÊS/ANO ==========
-    st.sidebar.header("📅 Período")
+    st.sidebar.header("Período")
 
     # Modo de visualização
     modo_visualizacao = st.sidebar.selectbox(
@@ -348,15 +348,12 @@ def main():
         data_inicio = date(ano_selecionado, 1, 1)
         data_fim = date(ano_selecionado, 12, 31)
 
-    # DEBUG: Exibir datas para teste
-    st.sidebar.markdown("---")
-    st.sidebar.caption(f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
 
     # ========== COLD START: VERIFICAR SE HÁ CONTAS CADASTRADAS ==========
     # Mesmo sem transações, podemos mostrar a previsibilidade com Saldo Inicial
     if df.empty and not contas:
-        st.warning("⚠️ Nenhuma transação ou conta encontrada.")
-        st.info("💡 Acesse **Contas e Cartões** para cadastrar suas contas com saldo inicial, ou **Registrar** para adicionar transações!")
+        st.warning("Nenhuma transação ou conta encontrada.")
+        st.info("Acesse **Contas e Cartões** para cadastrar suas contas com saldo inicial, ou **Registrar** para adicionar transações!")
         exibir_rodape()
         st.stop()
 
@@ -397,44 +394,8 @@ def main():
 
     # Calcular número de dias do período
     num_dias = (data_fim - data_inicio).days + 1
-
-    # ========== CARDS DE RESUMO ==========
     st.subheader(f"Resumo - {titulo_periodo}")
     st.caption(f"Período de {num_dias} dias: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric(
-            label="Saldo Inicial",
-            value=formatar_valor_br(saldo_inicial_total),
-            delta=f"Disponível: {formatar_valor_br(saldo_ant_comum)}" if saldo_ant_comum > 0 else None,
-            help=f"Saldo acumulado até {(data_inicio - timedelta(days=1)).strftime('%d/%m/%Y')} (inclui Saldo Inicial das contas)"
-        )
-
-    with col2:
-        st.metric(
-            label="Previsão Saldo Final",
-            value=formatar_valor_br(saldo_final_total),
-            delta=f"Disponível: {formatar_valor_br(saldo_final_comum)}",
-            help=f"Saldo projetado para {data_fim.strftime('%d/%m/%Y')}"
-        )
-
-    with col3:
-        delta_resultado = "Superávit" if resultado_periodo >= 0 else "Déficit"
-        st.metric(
-            label="Resultado do Período",
-            value=formatar_valor_br(resultado_periodo),
-            delta=delta_resultado,
-            delta_color="normal" if resultado_periodo >= 0 else "inverse",
-            help=f"Total de Entradas ({formatar_valor_br(total_entradas)}) - Saídas ({formatar_valor_br(total_saidas)})"
-        )
-
-    # Mostrar informação sobre saldo inicial das contas
-    if contas and df.empty:
-        st.info("Os saldos acima são baseados nos **Saldos Iniciais** das suas contas cadastradas. Adicione transações para ver a movimentação diária.")
-
-    st.markdown("---")
 
     # ========== TABELA DE FLUXO DE CAIXA ==========
     st.subheader(titulo_fluxo)
@@ -515,12 +476,12 @@ def main():
         hide_index=True,
         height=altura_tabela,
         column_config={
-            "Data": st.column_config.TextColumn("📅 Data", width="medium"),
-            "Entradas": st.column_config.TextColumn("💚 Entradas", width="small"),
-            "Saídas": st.column_config.TextColumn("❤️ Saídas", width="small"),
-            "Saldo Dia": st.column_config.TextColumn("📊 Saldo Dia", width="small"),
-            "Saldo Disponível": st.column_config.TextColumn("🏦 Saldo Disponível", width="medium"),
-            "Saldo Benefício": st.column_config.TextColumn("🎫 Saldo Benefício", width="medium"),
+            "Data": st.column_config.TextColumn("Data", width="medium"),
+            "Entradas": st.column_config.TextColumn("Entradas", width="small"),
+            "Saídas": st.column_config.TextColumn("Saídas", width="small"),
+            "Saldo Dia": st.column_config.TextColumn("Saldo Dia", width="small"),
+            "Saldo Disponível": st.column_config.TextColumn("Saldo Disponível", width="medium"),
+            "Saldo Benefício": st.column_config.TextColumn("Saldo Benefício", width="medium"),
         }
     )
 
@@ -543,6 +504,36 @@ def main():
     """, unsafe_allow_html=True)
 
     # ========== RODAPÉ ==========
+    # ========== CARDS DE RESUMO ==========
+    st.markdown('---')
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            label="Saldo Inicial",
+            value=formatar_valor_br(saldo_inicial_total),
+            delta=f"Disponível: {formatar_valor_br(saldo_ant_comum)}" if saldo_ant_comum > 0 else None,
+            help=f"Saldo acumulado até {(data_inicio - timedelta(days=1)).strftime('%d/%m/%Y')} (inclui Saldo Inicial das contas)"
+        )
+
+    with col2:
+        st.metric(
+            label="Previsão Saldo Final",
+            value=formatar_valor_br(saldo_final_total),
+            delta=f"Disponível: {formatar_valor_br(saldo_final_comum)}",
+            help=f"Saldo projetado para {data_fim.strftime('%d/%m/%Y')}"
+        )
+
+    with col3:
+        delta_resultado = "Superávit" if resultado_periodo >= 0 else "Déficit"
+        st.metric(
+            label="Resultado do Período",
+            value=formatar_valor_br(resultado_periodo),
+            delta=delta_resultado,
+            delta_color="normal" if resultado_periodo >= 0 else "inverse",
+            help=f"Total de Entradas ({formatar_valor_br(total_entradas)}) - Saídas ({formatar_valor_br(total_saidas)})"
+        )
+    st.markdown('---')
     exibir_rodape()
 
 

@@ -373,7 +373,7 @@ def renderizar_lista_cartoes(cartoes, faturas_por_cartao, fatura_total, limite_t
         <div style="font-weight: 700; font-size: 1.3rem;">{formatar_valor_br(fatura_cartao)}</div>
     </div>
     <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.75rem; opacity: 0.9;">
-        <span>📅 Venc: dia {dia_venc:02d}</span>
+        <span>Vencimento: dia {dia_venc:02d}</span>
         <span>Limite: {formatar_valor_br(limite_disponivel)}</span>
     </div>
     <div style="margin-top: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; height: 6px; overflow: hidden;">
@@ -933,7 +933,7 @@ def main():
             col_lembrar, col_ignorar = st.sidebar.columns(2)
 
             with col_lembrar:
-                if st.button("⏰ Depois", use_container_width=True, help="Lembrar em 24h"):
+                if st.button("Depois", use_container_width=True, help="Lembrar em 24h"):
                     prefs = {
                         'nao_perguntar': False,
                         'lembrar_depois': True,
@@ -944,7 +944,7 @@ def main():
                     st.rerun()
 
             with col_ignorar:
-                if st.button("🚫 Ignorar", use_container_width=True, help="Ignorar versão"):
+                if st.button("Ignorar", use_container_width=True, help="Ignorar versão"):
                     prefs = {
                         'nao_perguntar': True,
                         'lembrar_depois': False,

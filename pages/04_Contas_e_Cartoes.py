@@ -216,11 +216,11 @@ def modal_editar_conta(conta_id: int):
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_edit_conta"):
+        if st.button("Cancelar", use_container_width=True, key="btn_cancel_edit_conta"):
             st.rerun()
 
     with col2:
-        if st.button("✅ Salvar", type="primary", use_container_width=True, key="btn_save_edit_conta"):
+        if st.button("Salvar", type="primary", use_container_width=True, key="btn_save_edit_conta"):
             sucesso, msg = editar_conta(conta_id, novo_nome, novo_saldo, novo_tipo_grupo)
             if sucesso:
                 st.success(msg)
@@ -303,11 +303,11 @@ def modal_nova_conta():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("❌ Cancelar", use_container_width=True):
+        if st.button("Cancelar", use_container_width=True):
             st.rerun()
 
     with col2:
-        if st.button("✅ Salvar", type="primary", use_container_width=True):
+        if st.button("Salvar", type="primary", use_container_width=True):
             # Se nome não preenchido, usar o nome do banco
             nome_final = nome_conta.strip() if nome_conta.strip() else CATALOGO_BANCOS[banco_selecionado]['nome']
 
@@ -320,7 +320,7 @@ def modal_nova_conta():
                 st.error(msg)
 
 
-@st.dialog("➕ Novo Cartão de Crédito", width="small")
+@st.dialog("Novo Cartão de Crédito", width="small")
 def modal_novo_cartao():
     """Modal para adicionar novo cartão de crédito."""
 
@@ -398,11 +398,11 @@ def modal_novo_cartao():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_cartao"):
+        if st.button("Cancelar", use_container_width=True, key="btn_cancel_cartao"):
             st.rerun()
 
     with col2:
-        if st.button("✅ Salvar", type="primary", use_container_width=True, key="btn_save_cartao"):
+        if st.button("Salvar", type="primary", use_container_width=True, key="btn_save_cartao"):
             # Se nome não preenchido, usar o nome do banco
             nome_final = nome_cartao.strip() if nome_cartao.strip() else CATALOGO_BANCOS[banco_selecionado]['nome']
 
@@ -580,11 +580,11 @@ def main():
         cartoes = carregar_cartoes()
 
         if not cartoes:
-            st.info("💡 Você ainda não cadastrou nenhum cartão de crédito.")
+            st.info("Você ainda não cadastrou nenhum cartão de crédito.")
             st.markdown("""
             <div style="text-align: center; padding: 30px; color: #888;">
                 <div style="font-size: 3rem; margin-bottom: 10px;">💳</div>
-                <p>Clique em <strong>"➕ Novo Cartão"</strong> para começar!</p>
+                <p>Clique em <strong>"Novo Cartão"</strong> para começar!</p>
             </div>
             """, unsafe_allow_html=True)
         else:

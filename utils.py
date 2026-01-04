@@ -539,7 +539,7 @@ def modal_gestao(armazenamento):
         mapa_contas = {c: c for c in TIPOS_CONTA}
 
     # Criar abas
-    aba_nova, aba_historico = st.tabs(["➕ Novo Lançamento", "📋 Histórico & Ajustes"])
+    aba_nova, aba_historico = st.tabs(["Novo Lançamento", "Histórico e Ajuste"])
 
     # ========== ABA 1: NOVA TRANSAÇÃO ==========
     with aba_nova:
@@ -760,7 +760,7 @@ def modal_gestao(armazenamento):
             # criamos um modo de edição.
             
             st.divider()
-            st.markdown("### ✏️ Editar Transação")
+            st.markdown("###Editar Transação")
             
             # Seletor para edição (estilo antigo, mas dentro da aba de histórico)
             opcoes_edit = []
@@ -1231,7 +1231,7 @@ class AutoUpdate:
                     print(f"Aviso: Não foi possível atualizar {nome_item}: {e}")
 
             if progress_callback:
-                progress_callback("🧹 Limpando arquivos temporários...", 0.9)
+                progress_callback("Limpando arquivos temporários...", 0.9)
 
             try:
                 shutil.rmtree(pasta_temp)
