@@ -747,7 +747,7 @@ def main():
             showlegend=False,
             xaxis_title="",
             yaxis_title="Valor (R$)",
-            height=300,
+            height=490,
             margin=dict(t=20, b=20, l=20, r=20)
         )
         st.plotly_chart(fig_comp, use_container_width=True)
