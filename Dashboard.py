@@ -423,8 +423,8 @@ def main():
             
             # Tentar obter logo ou usar ícone padrão
             banco_data = CATALOGO_BANCOS.get(banco_id, CATALOGO_BANCOS.get('Outro'))
-            logo_url = banco_data.get('logo', '') if banco_data else ''
-            cor_primaria = banco_data.get('cor', '#78909c') if banco_data else '#78909c'
+            logo_url = banco_data.get('logo_url', '') if banco_data else ''
+            cor_primaria = banco_data.get('cor_hex', '#78909c') if banco_data else '#78909c'
             
             # Ícone (Imagem ou Letra)
             if logo_url:

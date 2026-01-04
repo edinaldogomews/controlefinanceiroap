@@ -234,7 +234,7 @@ CATALOGO_BANCOS = {
         "logo_url": _gerar_logo_svg("$", "#607D8B")
     },
     "Dinheiro": {
-        "nome": "Dinheiro em Espécie",
+        "nome": "Carteira",
         "cor_hex": "#4CAF50",
         "cor_secundaria": "#FFFFFF",
         "logo_url": _gerar_logo_svg("$", "#4CAF50")
@@ -1323,7 +1323,7 @@ class ArmazenamentoHibrido:
                 if col == 'Tipo':
                     df[col] = 'Despesa'
                 elif col == 'Conta':
-                    df[col] = 'Comum'
+                    df[col] = 'Carteira'
                 else:
                     df[col] = ''
 
@@ -1336,7 +1336,7 @@ class ArmazenamentoHibrido:
         df['Descricao'] = df['Descricao'].fillna('').astype(str)
         df['Categoria'] = df['Categoria'].fillna('Outros').replace('', 'Outros')
         df['Tipo'] = df['Tipo'].fillna('Despesa').replace('', 'Despesa')
-        df['Conta'] = df['Conta'].fillna('Comum').replace('', 'Comum')
+        df['Conta'] = df['Conta'].fillna('Carteira').replace('', 'Carteira')
         df['Tipo'] = df['Tipo'].apply(self._normalizar_tipo)
         df['Conta'] = df['Conta'].apply(self._normalizar_conta)
         df = df[df['Descricao'].str.strip() != '']
@@ -1369,9 +1369,9 @@ class ArmazenamentoHibrido:
         conta_str = str(conta).strip().upper()
         if conta_str in ['VALE REFEIÇÃO', 'VALE REFEICAO', 'VR', 'VALE-REFEIÇÃO', 'VALE-REFEICAO']:
             return 'Vale Refeição'
-        elif conta_str in ['CONTA COMUM', 'COMUM', 'PRINCIPAL', '']:
-            return 'Comum'
-        return 'Comum'
+        elif conta_str in ['CONTA COMUM', 'COMUM', 'PRINCIPAL', '', 'DINHEIRO', 'DINHEIRO EM ESPÉCIE', 'DINHEIRO EM ESPECIE']:
+            return 'Carteira'
+        return 'Carteira' if conta_str == 'COMUM' else conta
 
     def salvar_dados(self, df):
         """Salva o DataFrame completo no armazenamento atual."""
@@ -1602,12 +1602,42 @@ def limpar_cache_e_recarregar():
 import json
 
 def carregar_contas() -> list:
-    """Carrega lista de contas bancárias do arquivo JSON."""
+    """Carrega lista de contas bancárias do arquivo JSON. Garante que 'Carteira' exista."""
     try:
+        contas = []
         if CAMINHO_CONTAS.exists():
             with open(CAMINHO_CONTAS, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
+                contas = json.load(f)
+        
+        # Garantir existência da conta 'Carteira'
+        tem_carteira = any(c['nome'] == 'Carteira' for c in contas)
+        if not tem_carteira:
+            banco_info = CATALOGO_BANCOS.get('Dinheiro', CATALOGO_BANCOS['Outro'])
+            # Se a lista estiver vazia, ID 1. Se tiver, max ID + 1
+            novo_id = (max([c['id'] for c in contas]) if contas else 0) + 1
+            
+            carteira_conta = {
+                'id': novo_id,
+                'nome': 'Carteira',
+                'banco_id': 'Dinheiro',
+                'banco_nome': banco_info['nome'],
+                'cor_hex': banco_info['cor_hex'],
+                'cor_secundaria': banco_info['cor_secundaria'],
+                'logo_url': banco_info['logo_url'],
+                'saldo_inicial': 0.0,
+                'tipo_grupo': 'Disponível',
+                'data_criacao': datetime.now().isoformat()
+            }
+            contas.append(carteira_conta)
+            
+            # Salvar automaticamente a conta padrão
+            try:
+                with open(CAMINHO_CONTAS, 'w', encoding='utf-8') as f:
+                    json.dump(contas, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass # Se falhar salvar, apenas retorna com ela em memória
+                
+        return contas
     except Exception:
         return []
 
@@ -1847,12 +1877,12 @@ def obter_contas_por_tipo(tipo_grupo: str) -> list:
 def obter_lista_contas_disponiveis() -> list:
     """
     Retorna lista de nomes de contas do tipo 'Disponível' (Dinheiro/Banco).
-    Inclui mapeamento legado para 'Comum'.
+    Inclui mapeamento legado para 'Carteira'.
     """
     contas = obter_contas_por_tipo('Disponível')
-    # Adicionar conta legada 'Comum' se não houver contas cadastradas
+    # Adicionar conta padrão 'Carteira' se não houver contas cadastradas
     if not contas:
-        contas = ['Comum']
+        contas = ['Carteira']
     return contas
 
 
