@@ -391,6 +391,80 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
+    # ========== SEÇÃO: CONTAS ==========
+    # Carregar saldos atualizados de cada conta
+    saldos_info_detalhado = calcular_saldos_atuais()
+    lista_contas_detalhada = saldos_info_detalhado.get('contas', [])
+    total_geral_contas = saldos_info_detalhado.get('total_geral', 0.0)
+
+    if lista_contas_detalhada:
+        st.subheader("Contas")
+        
+        # Início do Card
+        html_contas = """
+<div style="
+  background-color: #1f2430;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 16px 18px;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin-bottom: 25px;
+">
+"""
+
+        # Linhas das Contas
+        for conta in lista_contas_detalhada:
+            nome = conta['nome']
+            saldo = conta['saldo_atual']
+            info = conta.get('conta_info', {})
+            banco_id = info.get('banco_id', 'Outro')
+            
+            # Tentar obter logo ou usar ícone padrão
+            banco_data = CATALOGO_BANCOS.get(banco_id, CATALOGO_BANCOS.get('Outro'))
+            logo_url = banco_data.get('logo', '') if banco_data else ''
+            cor_primaria = banco_data.get('cor', '#78909c') if banco_data else '#78909c'
+            
+            # Ícone (Imagem ou Letra)
+            if logo_url:
+                icon_html = f'<div style="width:40px; height:40px; background: white; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden;"><img src="{logo_url}" style="width:28px; height:28px; object-fit:contain;"></div>'
+            else:
+                icon_html = f'<div style="width:40px; height:40px; background: {cor_primaria}; color: white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.2rem;">{nome[0].upper()}</div>'
+
+            html_contas += f"""
+<div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+    <div style="display:flex; align-items:center; gap:14px;">
+        {icon_html}
+        <div style="display:flex; flex-direction:column;">
+            <span style="font-size:1rem; font-weight:600; color:#e0e0e0;">{nome}</span>
+            <span style="font-size:0.75rem; color:#78909c;">Previsto</span>
+        </div>
+    </div>
+    <div style="text-align:right;">
+        <div style="font-weight:700; color:#e0e0e0;">{formatar_valor_br(saldo)}</div>
+        <div style="font-size:0.75rem; color:#78909c;">{formatar_valor_br(saldo)}</div>
+    </div>
+</div>
+"""
+
+        # Totalizador (Rodapé do Card)
+        html_contas += f"""
+<div style="display:flex; justify-content:space-between; align-items:center; padding-top: 16px; margin-top: 4px;">
+    <div style="display:flex; flex-direction:column;">
+        <span style="font-size:1rem; font-weight:600; color:#e0e0e0;">Total</span>
+        <span style="font-size:0.75rem; color:#78909c;">Previsto</span>
+    </div>
+    <div style="text-align:right;">
+        <div style="font-weight:700; color:#e0e0e0;">{formatar_valor_br(total_geral_contas)}</div>
+        <div style="font-size:0.75rem; color:#78909c;">{formatar_valor_br(total_geral_contas)}</div>
+    </div>
+</div>
+</div>
+"""
+        
+        st.markdown(html_contas, unsafe_allow_html=True)
+
     # ========== SEÇÃO: MEUS CARTÕES ==========
     if cartoes:
         st.subheader("Meus Cartões")

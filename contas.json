@@ -22,5 +22,17 @@
     "saldo_inicial": 500.0,
     "tipo_grupo": "Disponível",
     "data_criacao": "2026-01-04T13:45:36.688390"
+  },
+  {
+    "id": 3,
+    "nome": "Dinheiro em Espécie",
+    "banco_id": "Dinheiro",
+    "banco_nome": "Dinheiro em Espécie",
+    "cor_hex": "#4CAF50",
+    "cor_secundaria": "#FFFFFF",
+    "logo_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj4KICAgICAgICA8Y2lyY2xlIGN4PSIyNSIgY3k9IjI1IiByPSIyNCIgZmlsbD0iIzRDQUY1MCIvPgogICAgICAgIDx0ZXh0IHg9IjI1IiB5PSIzMiIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjI0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI0ZGRkZGRiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+JDwvdGV4dD4KICAgIDwvc3ZnPg==",
+    "saldo_inicial": 1000.0,
+    "tipo_grupo": "Disponível",
+    "data_criacao": "2026-01-04T16:17:43.072714"
   }
 ]
