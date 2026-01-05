@@ -150,7 +150,7 @@ st.markdown("""
 # DIALOGS (MODAIS)
 # ============================================================
 
-@st.dialog("✏️ Editar Conta", width="small")
+@st.dialog("Editar Conta", width="small")
 def modal_editar_conta(conta_id: int):
     """Modal para editar uma conta bancária existente."""
 
@@ -216,11 +216,11 @@ def modal_editar_conta(conta_id: int):
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_edit_conta"):
+        if st.button("Cancelar", use_container_width=True, key="btn_cancel_edit_conta"):
             st.rerun()
 
     with col2:
-        if st.button("✅ Salvar", type="primary", use_container_width=True, key="btn_save_edit_conta"):
+        if st.button("Salvar", type="primary", use_container_width=True, key="btn_save_edit_conta"):
             sucesso, msg = editar_conta(conta_id, novo_nome, novo_saldo, novo_tipo_grupo)
             if sucesso:
                 st.success(msg)
@@ -229,7 +229,7 @@ def modal_editar_conta(conta_id: int):
                 st.error(msg)
 
 
-@st.dialog("➕ Nova Conta Bancária", width="small")
+@st.dialog("Nova Conta Bancária", width="small")
 def modal_nova_conta():
     """Modal para adicionar nova conta bancária."""
 
@@ -303,11 +303,11 @@ def modal_nova_conta():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("❌ Cancelar", use_container_width=True):
+        if st.button("Cancelar", use_container_width=True):
             st.rerun()
 
     with col2:
-        if st.button("✅ Salvar", type="primary", use_container_width=True):
+        if st.button("Salvar", type="primary", use_container_width=True):
             # Se nome não preenchido, usar o nome do banco
             nome_final = nome_conta.strip() if nome_conta.strip() else CATALOGO_BANCOS[banco_selecionado]['nome']
 
@@ -320,7 +320,7 @@ def modal_nova_conta():
                 st.error(msg)
 
 
-@st.dialog("➕ Novo Cartão de Crédito", width="small")
+@st.dialog("Novo Cartão de Crédito", width="small")
 def modal_novo_cartao():
     """Modal para adicionar novo cartão de crédito."""
 
@@ -398,11 +398,11 @@ def modal_novo_cartao():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_cartao"):
+        if st.button("Cancelar", use_container_width=True, key="btn_cancel_cartao"):
             st.rerun()
 
     with col2:
-        if st.button("✅ Salvar", type="primary", use_container_width=True, key="btn_save_cartao"):
+        if st.button("Salvar", type="primary", use_container_width=True, key="btn_save_cartao"):
             # Se nome não preenchido, usar o nome do banco
             nome_final = nome_cartao.strip() if nome_cartao.strip() else CATALOGO_BANCOS[banco_selecionado]['nome']
 
@@ -490,10 +490,10 @@ def renderizar_cartao_credito(cartao: dict):
     """, unsafe_allow_html=True)
 
     st.markdown(f"""
-    <div style="margin-top: 10px; padding: 10px 0;">
+    <div style="margin-top: 10px; padding: 10px 0; width: 100%; max-width: 380px;">
         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-            <span style="color: #666;">💳 Limite: <strong>{formatar_valor_br(limite)}</strong></span>
-            <span style="color: #666;">📅 Fecha dia <strong>{dia_fech:02d}</strong></span>
+            <span style="color: #666;">Limite: <strong>{formatar_valor_br(limite)}</strong></span>
+            <span style="color: #666;">Fecha dia <strong>{dia_fech:02d}</strong></span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -513,7 +513,7 @@ def main():
     st.caption("Gerencie suas contas bancárias e cartões de crédito")
 
     # Criar abas
-    tab_contas, tab_cartoes = st.tabs(["🏦 Minhas Contas", "💳 Meus Cartões"])
+    tab_contas, tab_cartoes = st.tabs(["Minhas Contas", "Meus Cartões"])
 
     # ========== ABA: MINHAS CONTAS ==========
     with tab_contas:
@@ -523,7 +523,6 @@ def main():
         if st.button("Nova Conta", type="primary", key="btn_nova_conta"):
             modal_nova_conta()
 
-        st.markdown("---")
 
         # Carregar e exibir contas
         contas = carregar_contas()
@@ -533,7 +532,7 @@ def main():
             st.markdown("""
             <div style="text-align: center; padding: 30px; color: #888;">
                 <div style="font-size: 3rem; margin-bottom: 10px;">🏦</div>
-                <p>Clique em <strong>"➕ Nova Conta"</strong> para começar!</p>
+                <p>Clique em <strong>"Nova Conta"</strong> para começar!</p>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -552,13 +551,17 @@ def main():
                             modal_editar_conta(conta_id)
 
                     with col_del:
-                        if st.button("Excluir", key=f"del_conta_{conta_id}", help="Excluir esta conta"):
-                            sucesso, msg = excluir_conta(conta_id)
-                            if sucesso:
-                                st.success(msg)
-                                st.rerun()
-                            else:
-                                st.error(msg)
+                        # Impedir exclusão da conta padrão "Carteira"
+                        if conta['nome'] == 'Carteira':
+                            st.button("Excluir", key=f"del_conta_{conta_id}", disabled=True, help="A conta padrão 'Carteira' não pode ser excluída")
+                        else:
+                            if st.button("Excluir", key=f"del_conta_{conta_id}", help="Excluir esta conta"):
+                                sucesso, msg = excluir_conta(conta_id)
+                                if sucesso:
+                                    st.success(msg)
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
 
                     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -567,20 +570,18 @@ def main():
         st.markdown("### Meus Cartões de Crédito")
 
         # Botão Novo Cartão
-        if st.button("➕ Novo Cartão", type="primary", key="btn_novo_cartao"):
+        if st.button("Novo Cartão", type="primary", key="btn_novo_cartao"):
             modal_novo_cartao()
 
-        st.markdown("---")
 
         # Carregar e exibir cartões
         cartoes = carregar_cartoes()
 
         if not cartoes:
-            st.info("💡 Você ainda não cadastrou nenhum cartão de crédito.")
             st.markdown("""
             <div style="text-align: center; padding: 30px; color: #888;">
-                <div style="font-size: 3rem; margin-bottom: 10px;">💳</div>
-                <p>Clique em <strong>"➕ Novo Cartão"</strong> para começar!</p>
+                <div style="font-size: 3rem; margin-bottom: 10px;"></div>
+                <p>Clique em <strong>"Novo Cartão"</strong> para começar!</p>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -592,7 +593,7 @@ def main():
                     cartao_id = renderizar_cartao_credito(cartao)
 
                     # Botão de excluir
-                    if st.button("🗑️ Excluir", key=f"del_cartao_{cartao_id}", help="Excluir este cartão"):
+                    if st.button("Excluir", key=f"del_cartao_{cartao_id}", help="Excluir este cartão"):
                         sucesso, msg = excluir_cartao(cartao_id)
                         if sucesso:
                             st.success(msg)

@@ -1,4 +1,1 @@
-Data,Descricao,Categoria,Valor,Tipo,Conta
-
-Data,Descricao,Categoria,Valor,Tipo
-
+ID,Data,Descricao,Categoria,Valor,Tipo,Conta,Status,Tags

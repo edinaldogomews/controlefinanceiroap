@@ -6,7 +6,7 @@ Contém todas as funções lógicas, classes e constantes do sistema.
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import shutil
 import tempfile
 import zipfile
@@ -40,10 +40,11 @@ CAMINHO_VERSION = BASE_DIR / "version.txt"
 CAMINHO_PREFERENCIAS = BASE_DIR / "preferencias_update.csv"
 CAMINHO_CONTAS = BASE_DIR / "contas.json"
 CAMINHO_CARTOES = BASE_DIR / "cartoes.json"
+CAMINHO_FATURAS = BASE_DIR / "faturas.json"
 NOME_PLANILHA = "Controle Financeiro"
 
 # Estrutura de colunas do sistema
-COLUNAS_SISTEMA = ['Data', 'Descricao', 'Categoria', 'Valor', 'Tipo', 'Conta']
+COLUNAS_SISTEMA = ['ID', 'Data', 'Descricao', 'Categoria', 'Valor', 'Tipo', 'Conta', 'Status', 'Tags']
 
 # Tipos de Conta / Forma de Pagamento (legado - manter para compatibilidade)
 TIPOS_CONTA = ['Conta Comum', 'Vale Refeição']
@@ -103,6 +104,101 @@ CATEGORIAS_PADRAO = CAT_DESPESA + CAT_RECEITA
 
 # Tipos de transação
 TIPOS_TRANSACAO = ['Despesa', 'Receita']
+
+# ============================================================
+# PREVISÃO INTELIGENTE DE CATEGORIA
+# ============================================================
+PALAVRAS_CHAVE_CATEGORIA = {
+    # Transporte
+    'uber': 'Transporte',
+    '99': 'Transporte',
+    'taxi': 'Transporte',
+    'combustivel': 'Transporte',
+    'posto': 'Transporte',
+    'gasolina': 'Transporte',
+    'etanol': 'Transporte',
+    'estacionamento': 'Transporte',
+    'onibus': 'Transporte',
+    'metro': 'Transporte',
+    'passagem': 'Transporte',
+    
+    # Alimentação
+    'ifood': 'Alimentação',
+    'rappi': 'Alimentação',
+    'restaurante': 'Alimentação',
+    'padaria': 'Alimentação',
+    'lanche': 'Alimentação',
+    'cafe': 'Alimentação',
+    'pizza': 'Alimentação',
+    'burguer': 'Alimentação',
+    
+    # Supermercado
+    'mercado': 'Supermercado',
+    'super': 'Supermercado',
+    'atacadao': 'Supermercado',
+    'assai': 'Supermercado',
+    'carrefour': 'Supermercado',
+    'pao de acucar': 'Supermercado',
+    'feira': 'Supermercado',
+    'hortifruti': 'Supermercado',
+    
+    # Moradia
+    'luz': 'Moradia',
+    'agua': 'Moradia',
+    'aluguel': 'Moradia',
+    'condominio': 'Moradia',
+    'iptu': 'Moradia',
+    'gas': 'Moradia',
+    'internet': 'Internet',
+    'vivo': 'Internet',
+    'claro': 'Internet',
+    'tim': 'Internet',
+    'oi': 'Internet',
+    
+    # Lazer
+    'netflix': 'Assinaturas/Serviços',
+    'spotify': 'Assinaturas/Serviços',
+    'prime': 'Assinaturas/Serviços',
+    'cinema': 'Lazer',
+    'teatro': 'Lazer',
+    'show': 'Lazer',
+    'bar': 'Lazer',
+    'jogo': 'Lazer',
+    'steam': 'Lazer',
+    
+    # Saúde
+    'farmacia': 'Saúde',
+    'drogaria': 'Saúde',
+    'medico': 'Saúde',
+    'dentista': 'Saúde',
+    'exame': 'Saúde',
+    'hospital': 'Saúde',
+    'psicologo': 'Saúde',
+    
+    # Receitas
+    'salario': 'Salário',
+    'pagamento': 'Salário',
+    'pix recebido': 'Outros (Receita)',
+    'restituicao': 'Restituição IR',
+    'dividendo': 'Dividendos',
+    'rendimento': 'Investimentos'
+}
+
+def prever_categoria(descricao: str, tipo: str) -> str:
+    """Retorna uma categoria sugerida com base na descrição e tipo."""
+    desc_lower = descricao.lower().strip()
+    
+    # Tentar match exato ou parcial com palavras-chave
+    for chave, categoria in PALAVRAS_CHAVE_CATEGORIA.items():
+        if chave in desc_lower:
+            # Validar se a categoria pertence ao tipo correto
+            if tipo == 'Receita' and categoria in CAT_RECEITA:
+                return categoria
+            elif tipo == 'Despesa' and categoria in CAT_DESPESA:
+                return categoria
+            # Se for categoria de despesa mas tipo receita (ou vice-versa), ignora
+            
+    return None
 
 # ============================================================
 # CATÁLOGO DE BANCOS (Cores e Logos)
@@ -234,7 +330,7 @@ CATALOGO_BANCOS = {
         "logo_url": _gerar_logo_svg("$", "#607D8B")
     },
     "Dinheiro": {
-        "nome": "Dinheiro em Espécie",
+        "nome": "Carteira",
         "cor_hex": "#4CAF50",
         "cor_secundaria": "#FFFFFF",
         "logo_url": _gerar_logo_svg("$", "#4CAF50")
@@ -387,6 +483,28 @@ def aplicar_estilo_global():
 # ============================================================
 # MODAL DE GESTÃO GLOBAL (Novo Lançamento)
 # ============================================================
+# GESTÃO DE FATURAS
+# ============================================================
+def carregar_faturas() -> list:
+    """Carrega a lista de faturas do arquivo JSON."""
+    try:
+        if CAMINHO_FATURAS.exists():
+            with open(CAMINHO_FATURAS, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception:
+        return []
+
+def salvar_faturas(faturas: list) -> bool:
+    """Salva a lista de faturas no arquivo JSON."""
+    try:
+        with open(CAMINHO_FATURAS, 'w', encoding='utf-8') as f:
+            json.dump(faturas, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+# ============================================================
 @st.dialog("Gestão de Lançamentos", width="medium")
 def modal_gestao(armazenamento):
     """Modal global para adicionar, editar e excluir transações."""
@@ -413,7 +531,7 @@ def modal_gestao(armazenamento):
     for cartao in cartoes_usuario:
         nome_exibir = f"💳 {cartao['nome']} ({cartao['banco_nome']})"
         opcoes_conta.append(nome_exibir)
-        mapa_contas[nome_exibir] = cartao['nome']
+        mapa_contas[nome_exibir] = f"Cartão: {cartao['nome']}"
 
     # Se não houver contas/cartões cadastrados, usar opções padrão
     if not opcoes_conta:
@@ -421,40 +539,48 @@ def modal_gestao(armazenamento):
         mapa_contas = {c: c for c in TIPOS_CONTA}
 
     # Criar abas
-    aba_nova, aba_editar, aba_excluir = st.tabs(["➕ Nova", "Editar", "🗑️ Excluir"])
+    aba_nova, aba_historico = st.tabs(["Novo Lançamento", "Histórico e Ajuste"])
 
     # ========== ABA 1: NOVA TRANSAÇÃO ==========
     with aba_nova:
-        st.subheader("Nova Transação")
+        # Estado local para tipo (radio)
+        if 'novo_tipo_radio' not in st.session_state:
+            st.session_state['novo_tipo_radio'] = "Despesa"
 
+        # Seletor de Tipo (Horizontal e Colorido)
+        tipo_selecionado = st.radio(
+            "Tipo de Lançamento",
+            options=["Despesa", "Receita"],
+            horizontal=True,
+            key="novo_tipo_radio",
+            label_visibility="collapsed"
+        )
+        
+        # Cor de destaque visual
+        cor_destaque = "#e74c3c" if tipo_selecionado == "Despesa" else "#2ecc71"
+        st.markdown(f"""
+        <style>
+        div[data-testid="stRadio"] > div {{
+            background-color: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+        }}
+        div[role="radiogroup"] {{
+             gap: 20px;
+        }}
+        </style>
+        <div style="height: 4px; background-color: {cor_destaque}; margin-bottom: 15px; border-radius: 2px;"></div>
+        """, unsafe_allow_html=True)
+
+        # Formulário principal
         with st.form(key="form_modal_nova", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-
-            with col1:
-                nova_conta = st.selectbox(
-                    "Conta/Cartão",
-                    options=opcoes_conta,
-                    key="modal_conta"
-                )
-
-            with col2:
-                novo_tipo = st.selectbox(
-                    "Tipo",
-                    options=TIPOS_TRANSACAO,
-                    key="modal_tipo"
-                )
-
-            col3, col4 = st.columns(2)
-
-            with col3:
-                nova_data = st.date_input(
-                    "Data",
-                    value=date.today(),
-                    format="DD/MM/YYYY",
-                    key="modal_data"
-                )
-
-            with col4:
+            
+            # Linha 1: Valor e Descrição (Mais destaque)
+            col_valor, col_desc = st.columns([1, 2])
+            
+            with col_valor:
                 novo_valor = st.number_input(
                     "Valor (R$)",
                     min_value=0.01,
@@ -464,46 +590,94 @@ def modal_gestao(armazenamento):
                     placeholder="0.00",
                     key="modal_valor"
                 )
+                
+            with col_desc:
+                # Previsão inteligente: precisamos capturar o input, mas st.text_input não atualiza estado dentro do form facilmente.
+                # Vamos manter simples: se o usuário digitar, no refresh (submit) ou se usarmos key, poderíamos tentar.
+                # Por limitação do Streamlit Forms, a previsão real-time requereria rerun a cada letra, o que é lento.
+                # Solução: Aplicar a previsão APÓS o submit se a categoria não foi alterada manualmente ou...
+                # Solução Melhor: Não usar form para a descrição se quisermos real-time, mas isso quebra o fluxo 'clear_on_submit'.
+                # Vamos manter a descrição dentro do form e a inteligência vai funcionar se o usuário deixar a categoria padrão ou se implementarmos um on_change fora.
+                # Por enquanto, vamos manter padrão.
+                
+                nova_descricao = st.text_input(
+                    "Descrição",
+                    placeholder="Ex: Uber, Mercado, Salário...",
+                    key="modal_descricao"
+                )
 
-            # Categorias baseadas no tipo
-            if novo_tipo == "Receita":
-                categorias = CAT_RECEITA
-            else:
-                categorias = CAT_DESPESA
+            # Linha 2: Categoria, Conta, Data
+            col_cat, col_conta, col_data = st.columns(3)
+            
+            with col_cat:
+                # Definir lista baseada no tipo selecionado
+                cats_opcoes = CAT_DESPESA if tipo_selecionado == "Despesa" else CAT_RECEITA
+                
+                # Tentar prever categoria se houver descrição (no session state do rerun anterior)
+                # Nota: dentro de form, isso é limitado. Vamos tentar pegar do session_state se existir
+                cat_pre_selecionada = None
+                if 'modal_descricao' in st.session_state and st.session_state.modal_descricao:
+                    sugestao = prever_categoria(st.session_state.modal_descricao, tipo_selecionado)
+                    if sugestao:
+                        cat_pre_selecionada = cats_opcoes.index(sugestao) if sugestao in cats_opcoes else None
+                
+                nova_categoria = st.selectbox(
+                    "Categoria",
+                    options=cats_opcoes,
+                    index=cat_pre_selecionada if cat_pre_selecionada is not None else 0,
+                    key="modal_categoria"
+                )
+            
+            with col_conta:
+                nova_conta = st.selectbox(
+                    "Conta / Cartão",
+                    options=opcoes_conta,
+                    key="modal_conta"
+                )
+                
+            with col_data:
+                nova_data = st.date_input(
+                    "Data",
+                    value=date.today(),
+                    format="DD/MM/YYYY",
+                    key="modal_data"
+                )
 
-            nova_categoria = st.selectbox(
-                "Categoria",
-                options=categorias,
-                key="modal_categoria"
-            )
-
-            nova_descricao = st.text_input(
-                "Descrição",
-                placeholder="Ex: Salário, Conta de Luz, etc.",
-                key="modal_descricao"
-            )
-
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            submit_texto = f"Salvar {tipo_selecionado}"
             submit_nova = st.form_submit_button(
-                "💾 Salvar",
+                submit_texto,
                 use_container_width=True,
                 type="primary"
             )
 
             if submit_nova:
+                # Verificar previsão de categoria "pós-submit" se o usuário não mudou (difícil rastrear).
+                # Vamos confiar no selectbox. Se o usuário digitou e deu enter, o rerun acontece, e a previsão roda no topo do loop.
+                # Mas dentro do form, os widgets não atualizam visualmente até o próximo rerun.
+                # Vamos aplicar a lógica de salvar.
+                
+                # Re-validar categoria com base na descrição se for 'Outros' (opcional, mas seguro manter o que o user escolheu)
+                cat_final = nova_categoria
+                # Se a categoria for a primeira da lista (default) e tivermos uma previsão melhor, poderíamos forçar,
+                # mas é arriscado sobrescrever a escolha do usuário.
+                # Melhor abordagem: Se a descrição tiver palavra-chave e a categoria for genérica, avisar ou ajustar?
+                # Vamos manter simples: O que está no input é o que vale.
+                
                 if not nova_descricao.strip():
                     st.error("A descrição é obrigatória!")
                 elif novo_valor is None or novo_valor <= 0:
                     st.error("O valor deve ser maior que zero!")
                 else:
-                    # Obter o nome real da conta/cartão para salvar
                     conta_salvar = mapa_contas.get(nova_conta, nova_conta)
 
                     sucesso, mensagem = armazenamento.salvar_transacao(
                         nova_data,
                         nova_descricao.strip(),
-                        nova_categoria,
+                        cat_final,
                         novo_valor,
-                        novo_tipo,
+                        tipo_selecionado,
                         conta_salvar
                     )
 
@@ -513,168 +687,131 @@ def modal_gestao(armazenamento):
                         st.rerun()
                     else:
                         st.error(f"❌ {mensagem}")
-
-    # ========== ABA 2: EDITAR TRANSAÇÃO ==========
-    with aba_editar:
-        st.subheader("Editar Transação")
-
+    
+    # ========== ABA 2: HISTÓRICO & AJUSTES ==========
+    with aba_historico:
+        st.caption("Últimas 15 transações lançadas. Edite ou exclua rapidamente.")
+        
         if df.empty:
-            st.info("Nenhuma transação para editar.")
+            st.info("Nenhum lançamento encontrado.")
         else:
-            # Pegar últimas 10 transações (mais recentes)
-            df_edit = df.copy()
-            df_edit['Data'] = pd.to_datetime(df_edit['Data'], errors='coerce')
-            df_edit = df_edit.sort_values('Data', ascending=False).head(15).reset_index(drop=True)
-
-            # Selecionar transação
-            opcoes_edit = []
-            for idx, row in df_edit.iterrows():
-                data_fmt = row['Data'].strftime('%d/%m') if pd.notna(row['Data']) else '—'
-                valor_fmt = formatar_valor_br(row['Valor'])
-                desc = str(row['Descricao'])[:25]
-                emoji = "🟢" if row['Tipo'] == 'Receita' else "🔴"
-                opcoes_edit.append(f"{emoji} {data_fmt} | {desc} | {valor_fmt}")
-
-            idx_selecionado = st.selectbox(
-                "Selecione a transação:",
-                options=range(len(opcoes_edit)),
-                format_func=lambda x: opcoes_edit[x],
-                key="modal_edit_select"
-            )
-
-            if idx_selecionado is not None:
-                row_edit = df_edit.iloc[idx_selecionado]
-
-                # Encontrar índice original no DataFrame completo
+            # Pegar últimas 15 transações
+            df_hist = df.copy()
+            df_hist['Data'] = pd.to_datetime(df_hist['Data'], errors='coerce')
+            df_hist = df_hist.sort_values('Data', ascending=False).head(15).reset_index(drop=True)
+            
+            # Cabeçalho da tabela visual
+            cols_header = st.columns([0.5, 1.5, 2.5, 1.5, 1.5])
+            cols_header[0].markdown("**Tipo**")
+            cols_header[1].markdown("**Data**")
+            cols_header[2].markdown("**Descrição**")
+            cols_header[3].markdown("**Valor**")
+            cols_header[4].markdown("**Ações**")
+            st.divider()
+            
+            for idx, row in df_hist.iterrows():
+                # Encontrar índice original para ações
                 df_original = df.reset_index(drop=True)
-                idx_original = df_original[
-                    (df_original['Descricao'] == row_edit['Descricao']) &
-                    (df_original['Valor'] == row_edit['Valor'])
+                idx_original_matches = df_original[
+                    (df_original['Descricao'] == row['Descricao']) &
+                    (df_original['Valor'] == row['Valor']) &
+                    (df_original['Data'] == row['Data']) # Importante casar data também
                 ].index
-                idx_original = idx_original[0] if len(idx_original) > 0 else 0
+                
+                idx_real = idx_original_matches[0] if len(idx_original_matches) > 0 else -1
+                
+                if idx_real == -1:
+                    continue # Skip se não achar (segurança)
 
-                with st.form(key="form_modal_editar"):
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        data_valor = row_edit['Data'].date() if pd.notna(row_edit['Data']) else date.today()
-                        edit_data = st.date_input("Data", value=data_valor, format="DD/MM/YYYY")
-
-                    with col2:
-                        edit_valor = st.number_input(
-                            "Valor",
-                            min_value=0.01,
-                            value=float(row_edit['Valor']),
-                            step=0.01,
-                            format="%.2f"
-                        )
-
-                    edit_descricao = st.text_input("Descrição", value=str(row_edit['Descricao']))
-
-                    col3, col4 = st.columns(2)
-
-                    with col3:
-                        tipo_atual = str(row_edit['Tipo'])
-                        idx_tipo = TIPOS_TRANSACAO.index(tipo_atual) if tipo_atual in TIPOS_TRANSACAO else 0
-                        edit_tipo = st.selectbox("Tipo", options=TIPOS_TRANSACAO, index=idx_tipo)
-
-                    with col4:
-                        # Encontrar a conta atual na lista de opções
-                        conta_atual = str(row_edit['Conta'])
-                        idx_conta = 0
-                        for i, opt in enumerate(opcoes_conta):
-                            if conta_atual in opt or mapa_contas.get(opt, '') == conta_atual:
-                                idx_conta = i
-                                break
-                        edit_conta = st.selectbox("Conta/Cartão", options=opcoes_conta, index=idx_conta)
-
-                    # Categoria
-                    if edit_tipo == "Receita":
-                        cats_edit = CAT_RECEITA
-                    else:
-                        cats_edit = CAT_DESPESA
-
-                    cat_atual = str(row_edit['Categoria'])
-                    if cat_atual not in cats_edit:
-                        cats_edit = cats_edit + [cat_atual]
-                    idx_cat = cats_edit.index(cat_atual) if cat_atual in cats_edit else 0
-                    edit_categoria = st.selectbox("Categoria", options=cats_edit, index=idx_cat)
-
-                    submit_edit = st.form_submit_button(
-                        "💾 Salvar Alterações",
-                        use_container_width=True,
-                        type="primary"
-                    )
-
-                    if submit_edit:
-                        if not edit_descricao.strip():
-                            st.error("A descrição é obrigatória!")
-                        elif edit_valor <= 0:
-                            st.error("O valor deve ser maior que zero!")
-                        else:
-                            conta_salvar = mapa_contas.get(edit_conta, edit_conta)
-
-                            sucesso, mensagem = armazenamento.editar_transacao(
-                                idx_original,
-                                edit_data,
-                                edit_descricao.strip(),
-                                edit_categoria,
-                                edit_valor,
-                                edit_tipo,
-                                conta_salvar
-                            )
-
-                            if sucesso:
-                                st.success(f"✅ {mensagem}")
+                c1, c2, c3, c4, c5 = st.columns([0.5, 1.5, 2.5, 1.5, 1.5])
+                
+                tipo_icon = "🟢" if row['Tipo'] == 'Receita' else "🔴"
+                data_fmt = row['Data'].strftime('%d/%m') if pd.notna(row['Data']) else '-'
+                valor_fmt = formatar_valor_br(row['Valor'])
+                
+                c1.markdown(f"{tipo_icon}")
+                c2.markdown(f"{data_fmt}")
+                c3.markdown(f"{row['Descricao']}")
+                c4.markdown(f"**{valor_fmt}**")
+                
+                # Botões de ação
+                with c5:
+                    col_edit, col_del = st.columns(2)
+                    with col_del:
+                        if st.button("🗑️", key=f"btn_del_{idx}", help="Excluir permanentemente"):
+                            res, msg = armazenamento.excluir_transacao(idx_real)
+                            if res:
+                                st.toast("Transação excluída!")
                                 st.cache_data.clear()
                                 st.rerun()
                             else:
-                                st.error(f"❌ {mensagem}")
+                                st.error("Erro")
+                                
+                    with col_edit:
+                         # Botão de editar abre um 'popover' ou expander na própria linha? 
+                         # Streamlit não permite aninhar form em botão facilmente sem rerun.
+                         # Vamos usar um st.expander logo abaixo da linha se for clicado?
+                         # Ou melhor: Um botão que carrega os dados num formulário de edição no topo da aba.
+                         pass
 
-    # ========== ABA 3: EXCLUIR TRANSAÇÃO ==========
-    with aba_excluir:
-        st.subheader("Excluir Transação")
-
-        if df.empty:
-            st.info("Nenhuma transação para excluir.")
-        else:
-            # Pegar últimas 10 transações
-            df_del = df.copy()
-            df_del['Data'] = pd.to_datetime(df_del['Data'], errors='coerce')
-            df_del = df_del.sort_values('Data', ascending=False).head(10).reset_index(drop=True)
-
-            st.caption("Clique no botão 🗑️ para excluir a transação.")
-
-            for idx, row in df_del.iterrows():
-                # Encontrar índice original
-                df_original = df.reset_index(drop=True)
-                idx_original = df_original[
-                    (df_original['Descricao'] == row['Descricao']) &
-                    (df_original['Valor'] == row['Valor'])
-                ].index
-                idx_original = idx_original[0] if len(idx_original) > 0 else 0
-
-                data_fmt = row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else '—'
-                valor_fmt = formatar_valor_br(row['Valor'])
-                desc = str(row['Descricao'])[:20]
-                emoji = "🟢" if row['Tipo'] == 'Receita' else "🔴"
-
-                col1, col2 = st.columns([5, 1])
-
-                with col1:
-                    st.markdown(f"**{emoji} {data_fmt}** | {desc} | {valor_fmt}")
-
-                with col2:
-                    if st.button("🗑️", key=f"del_{idx}_{idx_original}", help="Excluir"):
-                        sucesso, mensagem = armazenamento.excluir_transacao(idx_original)
-                        if sucesso:
-                            st.success("Excluído!")
+            # Nota: Edição inline completa é complexa no Streamlit. 
+            # Simplificação para este MVP: Manter a exclusão rápida aqui.
+            # Para edição, manteremos o seletor clássico no topo desta aba ou
+            # criamos um modo de edição.
+            
+            st.divider()
+            st.markdown("###Editar Transação")
+            
+            # Seletor para edição (estilo antigo, mas dentro da aba de histórico)
+            opcoes_edit = []
+            for idx, row in df_hist.iterrows():
+                d = row['Data'].strftime('%d/%m') if pd.notna(row['Data']) else '-'
+                v = formatar_valor_br(row['Valor'])
+                opcoes_edit.append(f"{d} | {row['Descricao']} | {v}")
+                
+            idx_edit_selecionado = st.selectbox(
+                "Escolha qual editar:",
+                range(len(opcoes_edit)),
+                format_func=lambda i: opcoes_edit[i],
+                key="select_edit_tab2"
+            )
+            
+            if idx_edit_selecionado is not None:
+                row_edit = df_hist.iloc[idx_edit_selecionado]
+                # ... (Lógica de formulário de edição idêntica à anterior, mas simplificada)
+                
+                with st.form(key="form_edit_tab2"):
+                    ce1, ce2, ce3 = st.columns(3)
+                    with ce1:
+                        ed_valor = st.number_input("Valor", value=float(row_edit['Valor']), min_value=0.01)
+                    with ce2:
+                        ed_desc = st.text_input("Descrição", value=str(row_edit['Descricao']))
+                    with ce3:
+                        ed_data_val = row_edit['Data'].date() if pd.notna(row_edit['Data']) else date.today()
+                        ed_data = st.date_input("Data", value=ed_data_val)
+                        
+                    submit_edicao = st.form_submit_button("Salvar Alterações")
+                    
+                    if submit_edicao:
+                        # Encontrar ID real novamente
+                        df_or = df.reset_index(drop=True)
+                        matches = df_or[
+                             (df_or['Descricao'] == row_edit['Descricao']) & 
+                             (df_or['Valor'] == row_edit['Valor'])
+                        ].index
+                        id_real_edit = matches[0] if len(matches) > 0 else 0
+                        
+                        # Salvar (simplificado, mantendo conta/categoria originais se não mudar)
+                        # Para MVP, assume-se que user quer corrigir valor/data/descrição.
+                        # Se quiser mudar tudo, melhor excluir e criar novo.
+                        
+                        ok, m = armazenamento.editar_transacao(
+                            id_real_edit, ed_data, ed_desc, row_edit['Categoria'], ed_valor, row_edit['Tipo'], row_edit['Conta']
+                        )
+                        if ok:
+                            st.success("Editado com sucesso!")
                             st.cache_data.clear()
                             st.rerun()
-                        else:
-                            st.error(mensagem)
-
-                st.divider()
 
 
 def exibir_botao_novo_lancamento(armazenamento):
@@ -1094,7 +1231,7 @@ class AutoUpdate:
                     print(f"Aviso: Não foi possível atualizar {nome_item}: {e}")
 
             if progress_callback:
-                progress_callback("🧹 Limpando arquivos temporários...", 0.9)
+                progress_callback("Limpando arquivos temporários...", 0.9)
 
             try:
                 shutil.rmtree(pasta_temp)
@@ -1312,20 +1449,40 @@ class ArmazenamentoHibrido:
             'Descrição': 'Descricao', 'descricao': 'Descricao', 'DESCRICAO': 'Descricao',
             'categoria': 'Categoria', 'CATEGORIA': 'Categoria',
             'valor': 'Valor', 'VALOR': 'Valor',
-            'tipo': 'Tipo', 'TIPO': 'Tipo', 'Status': 'Tipo',
+            'tipo': 'Tipo', 'TIPO': 'Tipo',
             'conta': 'Conta', 'CONTA': 'Conta'
         }
 
         df = df.rename(columns=mapeamento)
 
+        # Preenchimento de colunas faltantes e geração de ID
         for col in COLUNAS_SISTEMA:
             if col not in df.columns:
                 if col == 'Tipo':
                     df[col] = 'Despesa'
                 elif col == 'Conta':
-                    df[col] = 'Comum'
+                    df[col] = 'Carteira'
+                elif col == 'Status':
+                    # Se não existir status, assume 'Pago' para passado e 'Pendente' para futuro?
+                    # Por simplificação, assume 'Pago' (Concluído) para legados
+                    df[col] = 'Pago'
+                elif col == 'ID':
+                    # Gerar IDs para quem não tem
+                    import uuid
+                    df[col] = [str(uuid.uuid4()) for _ in range(len(df))]
                 else:
                     df[col] = ''
+        
+        # Garantir que IDs vazios recebam um valor
+        if 'ID' in df.columns:
+             import uuid
+             # Função auxiliar segura para apply
+             def garantir_id(val):
+                 val_str = str(val).strip()
+                 if not val_str or val_str.lower() in ['nan', 'none', '']:
+                     return str(uuid.uuid4())
+                 return val_str
+             df['ID'] = df['ID'].apply(garantir_id)
 
         df = df[[col for col in COLUNAS_SISTEMA if col in df.columns]]
         df = df.dropna(how='all')
@@ -1336,7 +1493,12 @@ class ArmazenamentoHibrido:
         df['Descricao'] = df['Descricao'].fillna('').astype(str)
         df['Categoria'] = df['Categoria'].fillna('Outros').replace('', 'Outros')
         df['Tipo'] = df['Tipo'].fillna('Despesa').replace('', 'Despesa')
-        df['Conta'] = df['Conta'].fillna('Comum').replace('', 'Comum')
+        df['Conta'] = df['Conta'].fillna('Carteira').replace('', 'Carteira')
+        
+        # Preencher colunas novas se estiverem vazias (mesmo existindo)
+        df['Status'] = df['Status'].fillna('Pago').replace('', 'Pago')
+        df['Tags'] = df['Tags'].fillna('').astype(str)
+        
         df['Tipo'] = df['Tipo'].apply(self._normalizar_tipo)
         df['Conta'] = df['Conta'].apply(self._normalizar_conta)
         df = df[df['Descricao'].str.strip() != '']
@@ -1366,12 +1528,19 @@ class ArmazenamentoHibrido:
 
     def _normalizar_conta(self, conta):
         """Normaliza o valor da conta para o formato interno."""
+        if pd.isna(conta):
+            return 'Carteira'
+            
         conta_str = str(conta).strip().upper()
+        
         if conta_str in ['VALE REFEIÇÃO', 'VALE REFEICAO', 'VR', 'VALE-REFEIÇÃO', 'VALE-REFEICAO']:
             return 'Vale Refeição'
-        elif conta_str in ['CONTA COMUM', 'COMUM', 'PRINCIPAL', '']:
-            return 'Comum'
-        return 'Comum'
+        elif conta_str in ['CONTA COMUM', 'COMUM', 'PRINCIPAL', '', 'DINHEIRO', 'DINHEIRO EM ESPÉCIE', 'DINHEIRO EM ESPECIE', 'NONE', 'NAN']:
+            return 'Carteira'
+            
+        # Retorna o valor original limpo (sem espaços extras), mas preservando maiúsculas/minúsculas originais se não for palavra reservada
+        # Mas como conta_str está upper, precisamos pegar o original 'conta' e dar strip
+        return str(conta).strip()
 
     def salvar_dados(self, df):
         """Salva o DataFrame completo no armazenamento atual."""
@@ -1473,13 +1642,17 @@ class ArmazenamentoHibrido:
             # Formatar data explicitamente no formato ISO (YYYY-MM-DD) para evitar inversão dia/mês
             data_formatada = data.strftime('%Y-%m-%d') if hasattr(data, 'strftime') else str(data)
 
+            import uuid
             nova_linha = pd.DataFrame([{
+                'ID': str(uuid.uuid4()),
                 'Data': pd.to_datetime(data_formatada),
                 'Descricao': descricao,
                 'Categoria': categoria,
                 'Valor': valor,
                 'Tipo': tipo,
-                'Conta': conta
+                'Conta': conta,
+                'Status': 'Pago', # Default para novas transações simples
+                'Tags': ''
             }])
 
             df = pd.concat([df, nova_linha], ignore_index=True)
@@ -1602,12 +1775,42 @@ def limpar_cache_e_recarregar():
 import json
 
 def carregar_contas() -> list:
-    """Carrega lista de contas bancárias do arquivo JSON."""
+    """Carrega lista de contas bancárias do arquivo JSON. Garante que 'Carteira' exista."""
     try:
+        contas = []
         if CAMINHO_CONTAS.exists():
             with open(CAMINHO_CONTAS, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
+                contas = json.load(f)
+        
+        # Garantir existência da conta 'Carteira'
+        tem_carteira = any(c['nome'] == 'Carteira' for c in contas)
+        if not tem_carteira:
+            banco_info = CATALOGO_BANCOS.get('Dinheiro', CATALOGO_BANCOS['Outro'])
+            # Se a lista estiver vazia, ID 1. Se tiver, max ID + 1
+            novo_id = (max([c['id'] for c in contas]) if contas else 0) + 1
+            
+            carteira_conta = {
+                'id': novo_id,
+                'nome': 'Carteira',
+                'banco_id': 'Dinheiro',
+                'banco_nome': banco_info['nome'],
+                'cor_hex': banco_info['cor_hex'],
+                'cor_secundaria': banco_info['cor_secundaria'],
+                'logo_url': banco_info['logo_url'],
+                'saldo_inicial': 0.0,
+                'tipo_grupo': 'Disponível',
+                'data_criacao': datetime.now().isoformat()
+            }
+            contas.append(carteira_conta)
+            
+            # Salvar automaticamente a conta padrão
+            try:
+                with open(CAMINHO_CONTAS, 'w', encoding='utf-8') as f:
+                    json.dump(contas, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass # Se falhar salvar, apenas retorna com ela em memória
+                
+        return contas
     except Exception:
         return []
 
@@ -1847,12 +2050,12 @@ def obter_contas_por_tipo(tipo_grupo: str) -> list:
 def obter_lista_contas_disponiveis() -> list:
     """
     Retorna lista de nomes de contas do tipo 'Disponível' (Dinheiro/Banco).
-    Inclui mapeamento legado para 'Comum'.
+    Inclui mapeamento legado para 'Carteira'.
     """
     contas = obter_contas_por_tipo('Disponível')
-    # Adicionar conta legada 'Comum' se não houver contas cadastradas
+    # Adicionar conta padrão 'Carteira' se não houver contas cadastradas
     if not contas:
-        contas = ['Comum']
+        contas = ['Carteira']
     return contas
 
 
@@ -2078,7 +2281,10 @@ def calcular_saldos_atuais() -> dict:
             entradas = 0.0
             saidas = 0.0
         else:
-            df_conta = df[df['Conta'] == nome_conta]
+            # Filtrar pelo nome da conta (ignorando espaços e case sensitive se necessário, mas idealmente exato)
+            # Usando .strip() para segurança
+            df_conta = df[df['Conta'].astype(str).str.strip() == nome_conta.strip()]
+            
             entradas = df_conta[df_conta['Tipo'] == 'Receita']['Valor'].sum()
             saidas = df_conta[df_conta['Tipo'] == 'Despesa']['Valor'].sum()
 
@@ -2183,10 +2389,14 @@ def calcular_saldo_anterior_com_inicial(df: pd.DataFrame, tipo_grupo: str, data_
     # 4. Filtrar transações anteriores ao mês
     df_temp = df.copy()
     df_temp['Data'] = pd.to_datetime(df_temp['Data'], errors='coerce')
+    
+    # Garantir que data_inicio_mes seja datetime para comparação correta
+    if isinstance(data_inicio_mes, date) and not isinstance(data_inicio_mes, datetime):
+        data_inicio_mes = datetime.combine(data_inicio_mes, datetime.min.time())
 
     df_anterior = df_temp[
         (df_temp['Conta'].isin(lista_contas)) &
-        (df_temp['Data'].dt.date < data_inicio_mes)
+        (df_temp['Data'] < data_inicio_mes)
     ]
 
     if df_anterior.empty:
