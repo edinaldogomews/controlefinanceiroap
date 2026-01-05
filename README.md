@@ -10,14 +10,14 @@ Sistema de controle financeiro pessoal desenvolvido com **Streamlit**, **Pandas*
 
 ## 📋 Funcionalidades
 
-- ✅ **Dashboard interativo** com gráficos e métricas financeiras
-- ✅ **Cadastro de transações** (despesas e receitas)
-- ✅ **Categorização automática** de gastos
-- ✅ **Visualização por período** com filtros
-- ✅ **Edição e exclusão** de transações
-- ✅ **Armazenamento híbrido**: Google Sheets (nuvem) ou CSV (local)
-- ✅ **Interface responsiva** e profissional
-- ✅ **Sincronização em tempo real** com Google Sheets
+- ✅ **Dashboard Personalizável**: Configure quais cards e gráficos deseja ver e a ordem de exibição.
+- ✅ **Gestão de Contas e Cartões**: Acompanhe saldos de contas e faturas de cartões de crédito.
+- ✅ **Extrato Detalhado**: Visualize e filtre transações por período, tipo e categoria.
+- ✅ **Previsibilidade**: Análise de gastos futuros e tendências.
+- ✅ **Navegação Mensal**: Facilidade para navegar entre os meses.
+- ✅ **Auto-Update**: Sistema integrado para verificação e atualização automática do dashboard.
+- ✅ **Armazenamento Híbrido**: Sincronização com Google Sheets ou modo offline com CSV.
+- ✅ **Interface Responsiva**: Design moderno e adaptável.
 
 ---
 
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 streamlit run Dashboard.py
 ```
 
-O dashboard será aberto automaticamente no navegador em `http://localhost:8501`
+O dashboard será aberto automaticamente no navegador em `http://localhost:8501`.
 
 ---
 
@@ -80,12 +80,21 @@ Para sincronizar seus dados com o Google Sheets e acessá-los de qualquer lugar:
 
 ```
 controlefinanceiroap/
-├── Dashboard.py              # Aplicação principal Streamlit
-├── dados_financeiros.csv     # Dados locais (modo offline)
-├── credentials.json          # Credenciais Google (opcional)
-├── requirements.txt          # Dependências do projeto
-├── README.md                 # Documentação
-└── LICENSE                   # Licença do projeto
+├── .devcontainer/          # Configuração para desenvolvimento em container
+├── assets/                 # Imagens e ícones (logos de bancos)
+├── pages/                  # Páginas adicionais do Streamlit
+│   ├── 02_Extrato.py
+│   ├── 03_Previsibilidade.py
+│   └── 04_Contas_e_Cartoes.py
+├── Dashboard.py            # Aplicação principal (Home)
+├── utils.py                # Funções utilitárias e lógica compartilhada
+├── dados_financeiros.csv   # Dados de transações (modo offline)
+├── contas.json             # Configuração de contas bancárias
+├── cartoes.json            # Configuração de cartões de crédito
+├── credentials.json        # Credenciais Google (opcional)
+├── requirements.txt        # Dependências do projeto
+├── README.md               # Documentação
+└── version.txt             # Controle de versão
 ```
 
 ---
@@ -119,7 +128,7 @@ O Somma utiliza um sistema de armazenamento híbrido com fallback automático:
 
 ---
 
-## 📊 Dependências
+## 📊 Dependências Principais
 
 ```
 streamlit>=1.28.0
@@ -128,6 +137,7 @@ plotly>=5.18.0
 openpyxl>=3.1.0
 gspread>=5.12.0
 oauth2client>=4.1.3
+requests>=2.31.0
 ```
 
 ---
@@ -138,7 +148,6 @@ oauth2client>=4.1.3
 - **[Pandas](https://pandas.pydata.org/)** - Manipulação e análise de dados
 - **[Plotly](https://plotly.com/)** - Gráficos interativos
 - **[gspread](https://gspread.readthedocs.io/)** - Integração com Google Sheets
-- **[OpenPyXL](https://openpyxl.readthedocs.io/)** - Leitura de arquivos Excel
 
 ---
 
@@ -150,22 +159,7 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 
 ## 🤝 Contribuição
 
-Contribuições são bem-vindas! Sinta-se à vontade para:
-
-1. Fazer um Fork do projeto
-2. Criar uma branch para sua feature (`git checkout -b feature/NovaFeature`)
-3. Commit suas mudanças (`git commit -m 'Adiciona NovaFeature'`)
-4. Push para a branch (`git push origin feature/NovaFeature`)
-5. Abrir um Pull Request
+Contribuições são bem-vindas! Sinta-se à vontade para abrir Issues ou Pull Requests.
 
 ---
 
-## 📧 Suporte
-
-Se você encontrar algum problema ou tiver sugestões, abra uma [issue](../../issues) no repositório.
-
----
-
-<div align="center">
-  <p>Desenvolvido com ❤️ para simplificar sua vida financeira</p>
-</div>
