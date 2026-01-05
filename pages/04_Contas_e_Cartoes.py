@@ -229,7 +229,7 @@ def modal_editar_conta(conta_id: int):
                 st.error(msg)
 
 
-@st.dialog("➕ Nova Conta Bancária", width="small")
+@st.dialog("Nova Conta Bancária", width="small")
 def modal_nova_conta():
     """Modal para adicionar nova conta bancária."""
 
@@ -523,7 +523,6 @@ def main():
         if st.button("Nova Conta", type="primary", key="btn_nova_conta"):
             modal_nova_conta()
 
-        st.markdown("---")
 
         # Carregar e exibir contas
         contas = carregar_contas()
@@ -533,7 +532,7 @@ def main():
             st.markdown("""
             <div style="text-align: center; padding: 30px; color: #888;">
                 <div style="font-size: 3rem; margin-bottom: 10px;">🏦</div>
-                <p>Clique em <strong>"➕ Nova Conta"</strong> para começar!</p>
+                <p>Clique em <strong>"Nova Conta"</strong> para começar!</p>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -574,16 +573,14 @@ def main():
         if st.button("Novo Cartão", type="primary", key="btn_novo_cartao"):
             modal_novo_cartao()
 
-        st.markdown("---")
 
         # Carregar e exibir cartões
         cartoes = carregar_cartoes()
 
         if not cartoes:
-            st.info("Você ainda não cadastrou nenhum cartão de crédito.")
             st.markdown("""
             <div style="text-align: center; padding: 30px; color: #888;">
-                <div style="font-size: 3rem; margin-bottom: 10px;">💳</div>
+                <div style="font-size: 3rem; margin-bottom: 10px;"></div>
                 <p>Clique em <strong>"Novo Cartão"</strong> para começar!</p>
             </div>
             """, unsafe_allow_html=True)

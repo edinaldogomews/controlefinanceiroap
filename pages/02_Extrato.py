@@ -55,7 +55,6 @@ def main():
     # Verificar se há dados
     if df.empty:
         st.warning("Nenhuma transação encontrada.")
-        st.info("Acesse a página **Registrar** para adicionar sua primeira transação!")
         exibir_rodape()
         st.stop()
 

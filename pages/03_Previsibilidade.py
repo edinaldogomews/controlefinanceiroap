@@ -394,7 +394,6 @@ def main():
 
     # Calcular número de dias do período
     num_dias = (data_fim - data_inicio).days + 1
-    st.subheader(f"Resumo - {titulo_periodo}")
     st.caption(f"Período de {num_dias} dias: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
 
     # ========== TABELA DE FLUXO DE CAIXA ==========

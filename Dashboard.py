@@ -869,14 +869,14 @@ def main():
             
             elif componente == 'Grafico_Fluxo':
                 renderizar_grafico_fluxo(totais_mes, label_periodo)
-                st.markdown("---")
+                # st.markdown("---")
 
         except Exception as e:
             st.error(f"Erro ao renderizar componente {componente}: {e}")
 
     # ========== RODAPÉ ==========
     
-    st.markdown("---")
+    # st.markdown("---")
     
     # Botão de configuração movido para o cabeçalho
 
